@@ -62,15 +62,14 @@ get h@FSMHandle{..} i = liftM (fmap (evalState fsmTable . machine)) res
 
 -- |Idempotent because of usage of caller-generated UUIDs
 -- FIXME: This can throw an exception.
--- FIXME: We could force posts to eval now, if the delay is acceptable.
 post :: forall s e a . (ToJSON   s, ToJSON   e, ToJSON   a,
                         Typeable s, Typeable e, Typeable a) =>
+
                         FSMHandle s e a                     ->
                         UUID                                ->
-                        s                                   ->
-                        [Msg e]                             -> IO ()
-post h i s0 es =
-    fsmCreate (fsmStore h) (mkInstance i s0 es :: Instance s e a)
+                        s                                   -> IO ()
+post h@FSMHandle{..} i s0 =
+    fsmCreate fsmStore (mkInstance i s0 [] :: Instance s e a)
 
 
 -- |Concurrent updates will be serialised by Postgres.
