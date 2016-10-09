@@ -1,12 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
-module BasicFSM (runBasicTest)
+module BasicFSM (runBasicTest) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import CommonDefs
+
 import Control.Concurrent
+import Control.Concurrent.MVar
 import Data.Typeable
 import Data.Aeson
 import GHC.Generics
@@ -21,9 +25,9 @@ import Data.UUID
 import Data.UUID.V4
 import Debug.Trace
 
-runBasicTest = testCase "Basic" runTest
-
--- Define some stuff
+-- ####################
+-- # Connection Example
+-- ####################
 data ConnectionState  = New | Open | Closed
     deriving (Eq,Show,Typeable,Generic,ToJSON,FromJSON)
 
@@ -33,10 +37,10 @@ data ConnectionEvent  = Create | Close | Reset
 data ConnectionAction = PrintStatusOpened | PrintStatusClosed
     deriving (Eq,Typeable,Generic,ToJSON,FromJSON)
 
-evalEffects :: Msg ConnectionAction -> IO Bool
-evalEffects (Msg i c)
-    | c == PrintStatusOpened = putStrLn "OUTPUT: Connection opened" >> return True
-    | c == PrintStatusClosed = putStrLn "OUTPUT: Connection closed" >> return True
+connEffects :: MVar () -> Msg ConnectionAction -> IO Bool
+connEffects mvar (Msg i c)
+    | c == PrintStatusOpened = putStrLn "OUTPUT: Connection opened" >> putMVar mvar () >> return True
+    | c == PrintStatusClosed = putStrLn "OUTPUT: Connection closed" >> putMVar mvar () >> return True
 
 connTransition :: (ConnectionState, ConnectionEvent) -> (ConnectionState, [ConnectionAction])
 connTransition (s,e) =
@@ -44,46 +48,33 @@ connTransition (s,e) =
         (New, Create) -> (Open,  [PrintStatusOpened])
         (Open, Close) -> (Closed,[PrintStatusClosed])
         (Open, Reset) -> (Open,  [PrintStatusClosed, PrintStatusOpened])
-        (a, b       ) -> trace ("a is: " ++ show a ++ " b is: " ++ show b) (Open,[])
+
+runBasicTest = testCase "Basic" runTest
 
 
 runTest = do
     let connStr = "host='localhost' port=5432 dbname='fsm' user='amx' password=''"
     st       <- Store.createFsmStore connStr "FSMTest"
     wal      <- Store.createWalStore connStr "FSMTestWal"
-    let t     = FSMTable connTransition evalEffects
+    sync     <- newEmptyMVar
+    let t     = FSMTable connTransition (connEffects sync)
     let myFSM = FSMHandle "FSMTest" t st wal 900
     firstId  <- nextRandom
 
-    post myFSM firstId New []
+    post myFSM firstId New
     Just fsmState <- get myFSM firstId
     assert $ fsmState == New
 
-    msgs <- mkMsgs [Create]
-    patch myFSM firstId msgs
+    msg1 <- mkMsgs [Create]
+    patch myFSM firstId msg1
 
-    time <- getCurrentTime
-    assert $ busyWaitForState myFSM firstId Open time
-
+    readMVar sync
     Just fsmState <- get myFSM firstId
-    putStrLn $ "State is: " ++ show fsmState
-    assert True
+    assert $ fsmState == Open
 
-  where
-    cutOff = 2
+    msg2 <- mkMsgs [Close]
+    patch myFSM firstId msg2
 
-    busyWaitForState :: FSMHandle ConnectionState ConnectionEvent ConnectionAction
-                     -> UUID
-                     -> ConnectionState
-                     -> UTCTime
-                     -> IO Bool
-    busyWaitForState fsm i s t = do
-        ct <- getCurrentTime
-
-        if addUTCTime cutOff t < ct
-        then return False
-        else do
-            Just cs <- get fsm i
-            if cs == s
-            then return True
-            else busyWaitForState fsm i s t
+    readMVar sync
+    Just fsmState <- get myFSM firstId
+    assert $ fsmState == Closed

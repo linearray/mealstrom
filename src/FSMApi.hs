@@ -108,3 +108,19 @@ recoverAll :: forall s e a . (Eq s, Eq e, Eq a) =>
 recoverAll h@FSMHandle{..} = do
     wals <- walScan walStore walExpiration
     mapM_ (recover h . walId) wals
+
+
+upsert :: forall s e a . (FromJSON s, FromJSON e, FromJSON a,
+                          ToJSON   s, ToJSON   e, ToJSON   a,
+                          Typeable s, Typeable e, Typeable a,
+                          Eq s, Eq e, Eq a)                   =>
+
+                          FSMHandle s e a                     ->
+                          UUID                                ->
+                          s                                   ->
+                          [Msg e]                             -> IO ()
+upsert h i s es = do
+    ms <- get h i
+    maybe (post h i s >> void (patch h i es))
+          (\s -> void $ patch h i es)
+          ms
