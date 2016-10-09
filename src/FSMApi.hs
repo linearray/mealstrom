@@ -31,10 +31,6 @@ import GHC.Generics
 -- |API for FSMs.
 -- This is the interface through which you can interact with a FSM
 -- from the rest of your program.
--- The beauty of this approach is that this module at the border of
--- the entire FSM handling is impure so that the rest can benefit
--- from purity.
-
 data FSMHandle s e a = (ToJSON   s, ToJSON   e, ToJSON   a,
                         FromJSON s, FromJSON e, FromJSON a,
                         Typeable s, Typeable e, Typeable a) => FSMHandle {
@@ -42,20 +38,17 @@ data FSMHandle s e a = (ToJSON   s, ToJSON   e, ToJSON   a,
     fsmTable       :: FSMTable s e a,
     fsmStore       :: PostgresqlStore FSM,
     walStore       :: PostgresqlStore WAL,
-    walExpiration  :: Integer       -- how old must a pending or crashed transaction be
-                                     -- for us to retry.
+    walExpiration  :: Integer                -- how old must a pending or crashed transaction be
+                                             -- for us to retry.
 }
 
-
--- |Always eval the read instance in case it was written with EvalLater or
--- there are updates pending.
--- This way we report the correct current state to the caller.
 get :: forall s e a . (FromJSON s, FromJSON e, FromJSON a,
                        Typeable s, Typeable e, Typeable a,
-                       Eq s, Eq e, Eq a) =>
+                       Eq s, Eq e, Eq a)                   =>
+
                        FSMHandle s e a                     ->
                        UUID                                -> IO (Maybe s)
-get h@FSMHandle{..} i = liftM (fmap (evalState fsmTable . machine)) res
+get h@FSMHandle{..} i = fmap (fmap (evalState fsmTable . machine)) res
   where
       res = fsmRead fsmStore i :: IO (Maybe (Instance s e a))
 
@@ -74,10 +67,14 @@ post h@FSMHandle{..} i s0 =
 
 -- |Concurrent updates will be serialised by Postgres.
 -- Do not call this function for FSM Instances that do not exist yet.
+-- Return True when the state transition has been successfully computed
+-- and actions have been scheduled.
+-- Returns False on failure to compute state transition.
 patch :: forall s e a . (FromJSON s, FromJSON e, FromJSON a,
                          ToJSON   s, ToJSON   e, ToJSON   a,
                          Typeable s, Typeable e, Typeable a,
                          Eq       s, Eq       e, Eq       a) =>
+
                          FSMHandle s e a                     ->
                          UUID                                ->
                          [Msg e]                             -> IO Bool

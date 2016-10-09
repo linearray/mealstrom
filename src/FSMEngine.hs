@@ -11,7 +11,6 @@ import FSMTable
 import Control.Monad (filterM, liftM, (>=>), void)
 
 -- |patchPhase1 is the part of a "change" to an FSM that happens synchronously.
--- The strategy determines how the work is split up between phase1 and phase2.
 patchPhase1 :: (Eq s, Eq e, Eq a) => FSMTable s e a -> [Msg e] -> Machine s e a -> IO (Machine s e a)
 patchPhase1 t es m = eval t (sendMultiple m es)
 
