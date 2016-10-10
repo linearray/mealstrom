@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE LambdaCase #-}
 
 
 module FSM2FSM where
@@ -50,7 +51,7 @@ paymentTransition (s,e) = case (s,e) of
         (PaymentPending o, ReceivedPayment ba i) -> if i >= o
                                                     then (PaymentPaid, [PaymentUpdateAccount ba i])
                                                     else (PaymentPending (o-i),[])
-        (PaymentAborted,   _)                 -> (PaymentAborted, [])
+        (PaymentAborted,   _)                    -> (PaymentAborted, [])
 
 paymentEffects :: QSem -> FSMHandle BankAccountState BankAccountEvent BankAccountAction -> Msg PaymentAction -> IO Bool
 paymentEffects qsem h (Msg d (PaymentUpdateAccount acc amount)) = do
@@ -71,11 +72,17 @@ data BankAccountEvent = BankAccountDeposit Int
 
 -- NOP
 data BankAccountAction = BankAccountDummyAction
-    deriving (Eq,Show,Typeable,Generic,ToJSON,FromJSON)
+    deriving (Eq,Show,Typeable,Generic)
+
+instance ToJSON BankAccountAction where
+    toJSON _ = "BankAccountDummyAction"
+
+instance FromJSON BankAccountAction where
+    parseJSON "BankAccountDummyAction" = return BankAccountDummyAction
 
 bankAccountTransition :: (BankAccountState, BankAccountEvent) -> (BankAccountState,[BankAccountAction])
-bankAccountTransition lala = case lala of
-    (BankAccountBalance i, BankAccountDeposit j) -> (BankAccountBalance $ i + j, [BankAccountDummyAction])
+bankAccountTransition =
+    \case (BankAccountBalance i, BankAccountDeposit j) -> (BankAccountBalance $ i + j, [BankAccountDummyAction])
 
 bankAccountEffects :: QSem -> Msg BankAccountAction -> IO Bool
 bankAccountEffects qsem _ = signalQSem qsem >> return True
