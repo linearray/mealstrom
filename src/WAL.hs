@@ -7,7 +7,7 @@ import Data.UUID
 import PostgresqlStore
 
 openTxn :: PostgresqlStore WAL -> UUID -> IO ()
-openTxn st i = walUpdate st i (+1)
+openTxn st i = walUpsert st i (+1)
 
 closeTxn :: PostgresqlStore WAL -> UUID -> IO ()
-closeTxn st i = walUpdate st i (+ (-1))
+closeTxn st i = walUpsert st i (+ (-1))

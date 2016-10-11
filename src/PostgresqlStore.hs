@@ -15,7 +15,7 @@ module PostgresqlStore(
     fsmRead,
     fsmUpdate,
     walScan,
-    walUpdate
+    walUpsert
 ) where
 
 -- |This store persists FSMs stored as key/value in postgresql, where keys are uuids
@@ -107,34 +107,30 @@ _createWalTable :: Connection -> Text -> IO Int64
 _createWalTable conn name =
     PGS.execute conn "CREATE TABLE IF NOT EXISTS ? ( id uuid PRIMARY KEY, date timestamptz NOT NULL, count int NOT NULL )" (Only (Identifier name))
 
-_walRead :: PostgresqlStore WAL -> UUID -> IO (Maybe WALEntry)
-_walRead st k =
-    withResource (storeConnPool st) (\c ->
-        withTransactionSerializable c $ do
-            el <- _getValue c (storeName st) k
-            return $ listToMaybe el)
-
-_walWrite :: PostgresqlStore WAL -> WALEntry -> IO ()
-_walWrite st (WALEntry i t n) =
-    withResource (storeConnPool st) (\c ->
-        withTransactionSerializable c $
-            void $ PGS.execute c "INSERT INTO ? VALUES (?,?,?) ON CONFLICT (id) DO UPDATE SET count = EXCLUDED.count"
-                (Identifier $ storeName st, i,t,n))
-
--- |Unlike fsmUpdate this function inserts a new WALEntry if is is missing.
+-- |Updates a WALEntry if it exists, inserts a new WALEntry if is is missing.
 -- We could improve performance by doing something like
 -- INSERT ... ON CONFLICT UPDATE SET count = count +/- 1;
-walUpdate :: PostgresqlStore WAL -> UUID -> (Int -> Int) -> IO ()
-walUpdate st i t =
+walUpsert :: PostgresqlStore WAL -> UUID -> (Int -> Int) -> IO ()
+walUpsert st i t =
     withResource (storeConnPool st) (\conn ->
         withTransactionSerializable conn $ do
             now   <- getCurrentTime
-            entry <- _walRead st i
+            entry <- _walRead conn i
 
             maybe
-                (_walWrite st (WALEntry i now 1))
-                (\(WALEntry i tm n) -> _walWrite st (WALEntry i tm $ t n))
+                (_walWrite conn (WALEntry i now 1))
+                (\(WALEntry i tm n) -> _walWrite conn (WALEntry i tm $ t n))
                 entry)
+  where
+    _walRead :: Connection -> UUID -> IO (Maybe WALEntry)
+    _walRead conn k = do
+        el <- _getValue conn (storeName st) k
+        return $ listToMaybe el
+
+    _walWrite :: Connection -> WALEntry -> IO ()
+    _walWrite conn (WALEntry i t n) =
+        void $ PGS.execute conn "INSERT INTO ? VALUES (?,?,?) ON CONFLICT (id) DO UPDATE SET count = EXCLUDED.count"
+            (Identifier $ storeName st, i,t,n)
 
 -- |Returns a list of all transactions that were not successfully terminated
 -- and are older than `cutoff`.
