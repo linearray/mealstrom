@@ -9,6 +9,7 @@
 module PostgresqlStore(
     PostgresqlStore,
     StoreType(..),
+    OutboxStatus(..),
     createFsmStore,
     createWalStore,
     fsmCreate,
@@ -39,6 +40,8 @@ import           Data.Typeable
 import           Data.UUID
 
 import FSM
+
+data OutboxStatus = NotFound | Pending | Done deriving (Eq,Show)
 
 data StoreType = WAL | FSM
 
@@ -74,21 +77,27 @@ fsmCreate st i =
         withTransactionSerializable conn $
             void $ _postValue conn (storeName st) (uuid i) (machine i))
 
--- Find out whether/how postgresql-simple throws exceptions.
+
+-- |Postgresql-simple exceptions will be caught by `patch` in FSMApi.hs
+
 fsmUpdate :: (FromJSON s, FromJSON e, FromJSON a,
               ToJSON s, ToJSON e, ToJSON a,
               Typeable s, Typeable e, Typeable a) =>
               PostgresqlStore FSM                 ->
               UUID                                ->
-              Transformer s e a                   -> IO Bool
+              Transformer s e a                   -> IO OutboxStatus
+
 fsmUpdate st i t =
     withResource (storeConnPool st) (\conn ->
         withTransactionSerializable conn $ do
             el    <- _getValue conn (storeName st) i
             let entry = listToMaybe el
             maybe
-                (return False)
-                (\e -> t (machine e) >>= \nm -> void (_postValue conn (storeName st) i nm) >> return True)
+                (return NotFound)
+                (\e -> do
+                    newMachine <- t (machine e)
+                    void (_postValue conn (storeName st) i newMachine)
+                    return $ if Prelude.null (outbox newMachine) then Done else Pending)
                 entry)
 
 -- #####

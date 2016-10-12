@@ -81,9 +81,9 @@ patch :: forall s e a . (FromJSON s, FromJSON e, FromJSON a,
 patch h@FSMHandle{..} i es = do
     openTxn walStore i
 
-    success <- fsmUpdate fsmStore i (patchPhase1 fsmTable es)
+    status <- fsmUpdate fsmStore i (patchPhase1 fsmTable es)
 
-    if success
+    if status /= NotFound
     then recover h i >> return True
     else return False
 
@@ -91,14 +91,16 @@ recover :: forall s e a . (FromJSON s, FromJSON e, FromJSON a,
                            ToJSON   s, ToJSON   e, ToJSON   a,
                            Typeable s, Typeable e, Typeable a,
                            Eq       s, Eq       e, Eq       a) =>
+
                            FSMHandle s e a                     ->
                            UUID                                -> IO ()
 recover h@FSMHandle{..} i =
     void $ forkFinally (fsmUpdate fsmStore i (patchPhase2 fsmTable))
-                       (\case Left exn -> do
+                       (\case Left exn      -> do
                                 putStrLn $ "Exception occurred while trying to recover " ++ show i
                                 print exn
-                              Right _  -> closeTxn walStore i)
+                              Right Done    -> closeTxn walStore i
+                              Right Pending -> return ())
 
 -- |FIXME: Do something about dead txs.
 -- Dead txs are those that do not have a corresponding entry in the main data table.
