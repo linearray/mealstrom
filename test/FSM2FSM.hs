@@ -91,23 +91,21 @@ bankAccountEffects qsem _ = signalQSem qsem >> return True
 -- #######
 -- # TEST
 -- #######
-runFSM2FSMTest = testCase "FSM2FSM" runTest
+runFSM2FSMTest c = testCase "FSM2FSM" (runTest c)
 
-runTest = do
-    let connStr = "host='localhost' port=5432 dbname='fsm' user='amx' password=''"
-
+runTest c = do
     sync <- newQSem 0
 
     -- Let's start with the simpler case
-    st1           <- Store.createFsmStore connStr "FSM2FSMTestBank"
-    wal1          <- Store.createWalStore connStr "FSM2FSMTestBankWal"
+    st1           <- Store.createFsmStore c "FSM2FSMTestBank"
+    wal1          <- Store.createWalStore c "FSM2FSMTestBankWal"
 
     let t1         = FSMTable bankAccountTransition (bankAccountEffects sync)
     let bankFsm    = FSMHandle "BankFSM" t1 st1 wal1 900
 
     -- Using the first handle we can instantiate the second one.
-    st2           <- Store.createFsmStore connStr "FSM2FSMTestPayments"
-    wal2          <- Store.createWalStore connStr "FSM2FSMTestPaymentsWal"
+    st2           <- Store.createFsmStore c "FSM2FSMTestPayments"
+    wal2          <- Store.createWalStore c "FSM2FSMTestPaymentsWal"
 
     let t2         = FSMTable paymentTransition (paymentEffects sync bankFsm)
     let paymentFsm = FSMHandle "PaymentFSM" t2 st2 wal2 900

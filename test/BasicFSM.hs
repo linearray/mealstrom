@@ -49,13 +49,12 @@ connTransition (s,e) =
         (Open, Close) -> (Closed,[PrintStatusClosed])
         (Open, Reset) -> (Open,  [PrintStatusClosed, PrintStatusOpened])
 
-runBasicTest = testCase "Basic" runTest
+runBasicTest c = testCase "Basic" (runTest c)
 
 
-runTest = do
-    let connStr = "host='localhost' port=5432 dbname='fsm' user='amx' password=''"
-    st       <- Store.createFsmStore connStr "FSMTest"
-    wal      <- Store.createWalStore connStr "FSMTestWal"
+runTest c = do
+    st       <- Store.createFsmStore c "FSMTest"
+    wal      <- Store.createWalStore c "FSMTestWal"
     sync     <- newEmptyMVar
     let t     = FSMTable connTransition (connEffects sync)
     let myFSM = FSMHandle "FSMTest" t st wal 900

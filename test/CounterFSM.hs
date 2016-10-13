@@ -27,7 +27,7 @@ import Data.UUID
 import Data.UUID.V4
 import Debug.Trace
 
-runCounterTest = testCase "Counter" runTest
+runCounterTest c = testCase "Counter" (runTest c)
 
 
 data CounterState = Desu
@@ -64,12 +64,11 @@ counterEffects mvar _ =
 
 
 
-runTest = do
-    let connStr = "host='localhost' port=5432 dbname='fsm' user='amx' password=''"
+runTest c = do
     sync   <- newEmptyMVar
 
-    st     <- Store.createFsmStore connStr "CounterTest"
-    wal    <- Store.createWalStore connStr "CounterTestWal"
+    st     <- Store.createFsmStore c "CounterTest"
+    wal    <- Store.createWalStore c "CounterTestWal"
 
     let t   = FSMTable counterTransition (counterEffects sync)
     let fsm = FSMHandle "CounterFSM" t st wal 900
