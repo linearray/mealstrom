@@ -1,0 +1,14 @@
+language: haskell
+
+ghc:
+  - 8.0
+  - 7.10
+
+services:
+  - postgresql
+
+before_script:
+    - psql -c 'create database fsmtest;' -U postgres
+
+addons:
+  postgresql: "9.5"
