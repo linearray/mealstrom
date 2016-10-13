@@ -1,6 +1,7 @@
 import BasicFSM (runBasicTest)
 import FSM2FSM (runFSM2FSMTest)
 import CounterFSM (runCounterTest)
+import Recovery (runRecoveryTest)
 
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Types
@@ -19,5 +20,6 @@ main =
         defaultMain $ testGroup "All tests" [
             runBasicTest c,
             runFSM2FSMTest c,
-            runCounterTest c
+            runCounterTest c,
+            runRecoveryTest c
             ]
