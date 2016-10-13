@@ -147,11 +147,10 @@ walScan :: PostgresqlStore WAL -> Integer -> IO [WALEntry]
 walScan st cutoff = do
     t <- getCurrentTime
     let xx = addUTCTime (negate (fromInteger (cutoff * 10^12) :: NominalDiffTime)) t
-    let nt = diffUTCTime t xx
 
     withResource (storeConnPool st) (\c ->
         withTransactionSerializable c $
-            PGS.query c "SELECT * FROM ? WHERE date < ? AND count > 0" (Identifier $ storeName st, nt))
+            PGS.query c "SELECT * FROM ? WHERE date < ? AND count > 0" (Identifier $ storeName st, xx))
 
 -- |Creates a postgresql store
 createFsmStore :: String -> Text -> IO (PostgresqlStore FSM)
