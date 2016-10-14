@@ -1,4 +1,4 @@
-Alegria
+Alegria [![CircleCI](https://circleci.com/gh/linearray/alegria.svg?style=svg)](https://circleci.com/gh/linearray/alegria)
 =======
 Manipulate FSMs and store them in PostgreSQL.
 
