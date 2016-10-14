@@ -1,8 +1,8 @@
 language: haskell
 
 ghc:
-  - 8.0
-  - 7.10
+  - "8.0"
+  - "7.10"
 
 services:
   - postgresql
