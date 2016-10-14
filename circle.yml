@@ -1,0 +1,7 @@
+machine:
+  ghc:
+    version: 7.10.2
+
+database:
+  override:
+    psql -c 'create database fsmtest;'
