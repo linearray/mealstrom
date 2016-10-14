@@ -4,4 +4,4 @@ machine:
 
 database:
   override:
-    psql -c 'create database fsmtest;'
+    - psql -c 'create database fsmtest;'
