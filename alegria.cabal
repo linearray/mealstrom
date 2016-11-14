@@ -22,10 +22,14 @@ library
   -- other-extensions:    
   build-depends:       base              >=4.8       && <4.10
                      , aeson             >= 0.11.2.0 && < 1.1
+                     , async             >= 2.1.0    && < 2.2
                      , bytestring        >= 0.10.8.1 && < 0.11
                      , containers        >= 0.5.8.1  && < 0.6
+                     , list-t            >= 1        && < 2
                      , postgresql-simple >= 0.5.1.2  && < 0.6
                      , resource-pool     >= 0.2.3.2  && < 0.3
+                     , stm               >= 2.4.4.1  && < 2.5
+                     , stm-containers    >= 0.2.15   && < 0.3
                      , text              >= 1.2.2.1  && < 1.3
                      , time              >= 1.6      && < 1.7
                      , uuid              >= 1.3.12   && < 1.4
@@ -36,8 +40,9 @@ library
                        FSMApi,
                        FSMEngine,
                        FSMTable,
-                       PostgresqlStore
-  ghc-options:         -threaded -with-rtsopts=-N
+                       MemoryStore,
+                       PostgresJSONStore
+  ghc-options:
 
 test-suite test
   default-language:    Haskell2010
@@ -49,9 +54,13 @@ test-suite test
   build-depends:
                        base              >= 4.8      && < 4.10
                      , aeson             >= 0.11.2.0 && < 1.1
+                     , async             >= 2.1.0    && < 2.2
                      , bytestring        >= 0.10.8.1 && < 0.11
+                     , list-t            >= 1        && < 2
                      , postgresql-simple >= 0.5.1.2  && < 0.6
                      , resource-pool     >= 0.2.3.2  && < 0.3
+                     , stm               >= 2.4.4.1  && < 2.5
+                     , stm-containers    >= 0.2.15   && < 0.3
                      , text              >= 1.2.2.1  && < 1.3
                      , time              >= 1.6      && < 1.7
                      , tasty             >= 0.11.0.2 && < 0.12

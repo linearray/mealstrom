@@ -2,8 +2,10 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE FlexibleContexts #-}
 
-module Recovery where
+
+module Recovery(runRecoveryTests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -19,16 +21,16 @@ import GHC.Generics
 
 import FSM
 import FSMApi
+import FSMStore
 import FSMTable
-import PostgresqlStore as Store
-import Database.PostgreSQL.Simple as PGS
+import PostgresJSONStore as PGJSON
+import MemoryStore       as MemStore
+import Data.Text
 import Data.Time.Clock
 import Data.IORef
 import Data.UUID
 import Data.UUID.V4
 import Debug.Trace
-
-runRecoveryTest c = testCase "Recovery" (runTest c)
 
 data RecoveryState  = RecoveryState  deriving (Eq,Show,Generic,Typeable,ToJSON,FromJSON)
 data RecoveryEvent  = RecoveryEvent  deriving (Eq,Show,Generic,Typeable,ToJSON,FromJSON)
@@ -48,15 +50,19 @@ recoveryEffects b sync a = do
     return bb
 
 
+runRecoveryTests c = testGroup "Recovery" [
+    testCase "RecoveryPG" (runTest $ PGJSON.mkStore c),
+    testCase "RecoveryMem" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore RecoveryState RecoveryEvent RecoveryAction)))
+    ]
+
 runTest c = do
-    st     <- Store.createFsmStore c "RecoveryTest"
-    wal    <- Store.createWalStore c "RecoveryTestWal"
+    st     <- c "RecoveryTest"
 
     b      <- newIORef False
     sync   <- newEmptyMVar
 
     let t   = FSMTable recoveryTransition (recoveryEffects b sync)
-    let fsm = FSMHandle "RecoveryFSM" t st wal 0    -- hack
+    let fsm = FSMHandle "RecoveryFSM" t st st 1 3    -- we have a timeout of 1 second for actions
 
     i      <- nextRandom
 
@@ -64,12 +70,14 @@ runTest c = do
     mkMsgs [RecoveryEvent] >>= patch fsm i
 
     -- action is run for the first time
-    readMVar sync
+    takeMVar sync
 
+    -- wait two seconds, so that the action is definitely recoverable
+    threadDelay (2 * 10^6)
     writeIORef b True
     recoverAll fsm
 
     -- action is run again
-    readMVar sync
+    takeMVar sync
 
     assert True

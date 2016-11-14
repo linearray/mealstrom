@@ -1,13 +1,11 @@
-{-# LANGUAGE DataKinds #-}
-
 module WAL where
 
 import Data.UUID
 
-import PostgresqlStore
+import WALStore
 
-openTxn :: PostgresqlStore WAL -> UUID -> IO ()
-openTxn st i = walUpsert st i (+1)
+openTxn :: WALStore st => st -> UUID -> IO ()
+openTxn = walUpsertIncrement
 
-closeTxn :: PostgresqlStore WAL -> UUID -> IO ()
-closeTxn st i = walUpsert st i (+ (-1))
+closeTxn :: WALStore st => st -> UUID -> IO ()
+closeTxn = walDecrement

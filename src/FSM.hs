@@ -1,11 +1,11 @@
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+-- | Machine Definitions
+-- These defintions are concerned with the basic functions of
+-- finite state machines, keeping a memory and state transitions.
 
 module FSM where
 
@@ -21,22 +21,9 @@ import Data.UUID.V4
 import GHC.Generics
 import System.IO.Unsafe (unsafePerformIO)
 
-data Strategy = EvalNow | EvalLater
+type Transformer s e a = Instance s e a -> IO (Instance s e a)
+data OutboxStatus      = NotFound | Pending | Done deriving (Eq,Show)
 
-type Transformer     s e a = Machine s e a -> IO (Machine s e a)
-type PureTransformer s e a = Machine s e a ->     Machine s e a
-
-data WALEntry = WALEntry {
-    walId    :: UUID,
-    walTime  :: UTCTime,
-    walCount :: Int
-} deriving (Show,Eq,Generic,Typeable,ToJSON,FromJSON)
-
--- ######################
--- # Machine Definitions
--- ######################
--- These defintions are concerned with the basic functions of
--- finite state machines, keeping a memory and state transitions.
 
 -- | A change in the FSM is either a (Step Timestamp oldState event newState Actions)
 -- or an increase in a counter.

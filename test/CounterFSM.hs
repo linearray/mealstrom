@@ -2,8 +2,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE FlexibleContexts #-}
 
-module CounterFSM (runCounterTest) where
+module CounterFSM (runCounterTests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -13,22 +14,20 @@ import CommonDefs
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Monad
-import Data.Typeable
 import Data.Aeson
+import Data.Text
+import Data.Typeable
 import GHC.Generics
 
 import FSM
 import FSMApi
 import FSMTable
-import PostgresqlStore as Store
-import Database.PostgreSQL.Simple as PGS
+import PostgresJSONStore as PGJSON
+import MemoryStore       as MemStore
 import Data.Time.Clock
 import Data.UUID
 import Data.UUID.V4
 import Debug.Trace
-
-runCounterTest c = testCase "Counter" (runTest c)
-
 
 data CounterState = Desu
     deriving (Eq,Show,Typeable)
@@ -63,15 +62,18 @@ counterEffects mvar _ =
     putMVar mvar () >> return True
 
 
+runCounterTests c = testGroup "CounterFSM" [
+    testCase "CounterPG" (runTest $ PGJSON.mkStore c),
+    testCase "CounterMem" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore CounterState CounterEvent CounterAction)))
+    ]
 
 runTest c = do
     sync   <- newEmptyMVar
 
-    st     <- Store.createFsmStore c "CounterTest"
-    wal    <- Store.createWalStore c "CounterTestWal"
+    st     <- c "CounterTest"
 
     let t   = FSMTable counterTransition (counterEffects sync)
-    let fsm = FSMHandle "CounterFSM" t st wal 900
+    let fsm = FSMHandle "CounterFSM" t st st 900 3
 
     i      <- nextRandom
     post fsm i Desu

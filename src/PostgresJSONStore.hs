@@ -1,26 +1,23 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
-module PostgresqlStore(
-    PostgresqlStore,
-    StoreType(..),
-    OutboxStatus(..),
-    createFsmStore,
-    createWalStore,
-    fsmCreate,
-    fsmRead,
-    fsmUpdate,
-    walScan,
-    walUpsert
+
+-- |This module is the main backing for FSMs. Instances are stored in a table
+-- with the name passed as storeName when creating the PostgresJSONStore. WALs use
+-- the same name with "Wal" appended.
+-- This store persists FSMs stored as key/value in postgresql, where keys are uuids
+-- and values are JSONB fields.
+module PostgresJSONStore(
+    PostgresJSONStore,
+    mkStore
 ) where
 
--- |This store persists FSMs stored as key/value in postgresql, where keys are uuids
--- and values are JSONB fields.
 
 import           Control.Monad (liftM, void)
 import           Database.PostgreSQL.Simple as PGS
@@ -38,17 +35,31 @@ import           Data.Text
 import           Data.Time
 import           Data.Typeable
 import           Data.UUID
+import           GHC.Generics
 
 import FSM
+import FSMStore
+import WALStore
 
-data OutboxStatus = NotFound | Pending | Done deriving (Eq,Show)
-
-data StoreType = WAL | FSM
-
-data PostgresqlStore (t :: StoreType) = PostgresqlStore {
+data PostgresJSONStore = PostgresJSONStore {
     storeConnPool :: Pool Connection,
     storeName     :: Text
 }
+
+instance (FromJSON s, FromJSON e, FromJSON a,
+          ToJSON   s, ToJSON   e, ToJSON   a,
+          Typeable s, Typeable e, Typeable a) => FSMStore PostgresJSONStore (Instance s e a) where
+    fsmRead            = PostgresJSONStore.fsmRead
+    fsmUpdate          = PostgresJSONStore.fsmUpdate
+    fsmCreate          = PostgresJSONStore.fsmCreate
+
+
+instance WALStore PostgresJSONStore where
+    walUpsertIncrement = PostgresJSONStore.walUpsertIncrement
+    walDecrement       = PostgresJSONStore.walDecrement
+    walScan            = PostgresJSONStore.walScan
+
+
 
 givePool :: IO Connection -> IO (Pool Connection)
 givePool creator = createPool creator close 1 (10 * 10^12) 20
@@ -59,7 +70,7 @@ givePool creator = createPool creator close 1 (10 * 10^12) 20
 -- #########
 fsmRead :: (FromJSON s, FromJSON e, FromJSON a,
             Typeable s, Typeable e, Typeable a) =>
-            PostgresqlStore FSM                 ->
+            PostgresJSONStore                   ->
             UUID                                -> IO (Maybe (Instance s e a))
 fsmRead st k =
     withResource (storeConnPool st) (\conn ->
@@ -68,9 +79,9 @@ fsmRead st k =
             return $ listToMaybe el)
 
 
-fsmCreate :: (ToJSON s, ToJSON e, ToJSON a,
+fsmCreate :: (ToJSON   s, ToJSON   e, ToJSON   a,
               Typeable s, Typeable e, Typeable a) =>
-              PostgresqlStore FSM                 ->
+              PostgresJSONStore                   ->
               Instance s e a                      -> IO ()
 fsmCreate st i =
     withResource (storeConnPool st) (\conn ->
@@ -79,23 +90,21 @@ fsmCreate st i =
 
 
 -- |Postgresql-simple exceptions will be caught by `patch` in FSMApi.hs
-
 fsmUpdate :: (FromJSON s, FromJSON e, FromJSON a,
-              ToJSON s, ToJSON e, ToJSON a,
+              ToJSON   s, ToJSON   e, ToJSON   a,
               Typeable s, Typeable e, Typeable a) =>
-              PostgresqlStore FSM                 ->
+              PostgresJSONStore                   ->
               UUID                                ->
               Transformer s e a                   -> IO OutboxStatus
-
 fsmUpdate st i t =
     withResource (storeConnPool st) (\conn ->
         withTransactionSerializable conn $ do
-            el    <- _getValue conn (storeName st) i
+            el    <- _getValueForUpdate conn (storeName st) i
             let entry = listToMaybe el
             maybe
                 (return NotFound)
                 (\e -> do
-                    newMachine <- t (machine e)
+                    newMachine <- liftM machine (t e)
                     void (_postValue conn (storeName st) i newMachine)
                     return $ if Prelude.null (outbox newMachine) then Done else Pending)
                 entry)
@@ -103,64 +112,51 @@ fsmUpdate st i t =
 -- #####
 -- # WAL
 -- #####
-createWalStore :: String -> Text -> IO (PostgresqlStore WAL)
-createWalStore connStr name =
-    let
-        connBS = DBSC8.pack connStr
-    in do
-        pool  <- givePool (PGS.connectPostgreSQL connBS)
-        withResource pool $ flip _createWalTable name
-        return (PostgresqlStore pool name :: PostgresqlStore WAL)
-
 _createWalTable :: Connection -> Text -> IO Int64
 _createWalTable conn name =
     PGS.execute conn "CREATE TABLE IF NOT EXISTS ? ( id uuid PRIMARY KEY, date timestamptz NOT NULL, count int NOT NULL )" (Only (Identifier name))
 
 -- |Updates a WALEntry if it exists, inserts a new WALEntry if is is missing.
--- We could improve performance by doing something like
--- INSERT ... ON CONFLICT UPDATE SET count = count +/- 1;
-walUpsert :: PostgresqlStore WAL -> UUID -> (Int -> Int) -> IO ()
-walUpsert st i t =
+walUpsertIncrement st i =
+    _walExecute st i _walIncrement
+walDecrement st i =
+    _walExecute st i _walDecrement
+
+_walExecute :: PostgresJSONStore -> UUID -> Query -> IO ()
+_walExecute st i q = let tbl = append (storeName st) "Wal" in
     withResource (storeConnPool st) (\conn ->
         withTransactionSerializable conn $ do
             now   <- getCurrentTime
-            entry <- _walRead conn i
+            void $ PGS.execute conn q (Identifier tbl, i, now, Identifier tbl))
 
-            maybe
-                (_walWrite conn (WALEntry i now 1))
-                (\(WALEntry i tm n) -> _walWrite conn (WALEntry i tm $ t n))
-                entry)
-  where
-    _walRead :: Connection -> UUID -> IO (Maybe WALEntry)
-    _walRead conn k = do
-        el <- _getValue conn (storeName st) k
-        return $ listToMaybe el
+_walIncrement :: Query
+_walIncrement = "INSERT INTO ? VALUES (?,?,1) ON CONFLICT (id) DO UPDATE SET count = ?.count + 1, date = EXCLUDED.date"
 
-    _walWrite :: Connection -> WALEntry -> IO ()
-    _walWrite conn (WALEntry i t n) =
-        void $ PGS.execute conn "INSERT INTO ? VALUES (?,?,?) ON CONFLICT (id) DO UPDATE SET count = EXCLUDED.count"
-            (Identifier $ storeName st, i,t,n)
+_walDecrement :: Query
+_walDecrement = "INSERT INTO ? VALUES (?,?,0) ON CONFLICT (id) DO UPDATE SET count = ?.count - 1"
+
 
 -- |Returns a list of all transactions that were not successfully terminated
 -- and are older than `cutoff`.
-walScan :: PostgresqlStore WAL -> Integer -> IO [WALEntry]
+walScan :: PostgresJSONStore -> Int -> IO [WALEntry]
 walScan st cutoff = do
     t <- getCurrentTime
-    let xx = addUTCTime (negate (fromInteger (cutoff * 10^12) :: NominalDiffTime)) t
+    let xx = addUTCTime (negate (fromInteger (toInteger cutoff) :: NominalDiffTime)) t
 
     withResource (storeConnPool st) (\c ->
         withTransactionSerializable c $
-            PGS.query c "SELECT * FROM ? WHERE date < ? AND count > 0" (Identifier $ storeName st, xx))
+            PGS.query c "SELECT * FROM ? WHERE date < ? AND count > 0" (Identifier $ append (storeName st) "Wal", xx))
 
 -- |Creates a postgresql store
-createFsmStore :: String -> Text -> IO (PostgresqlStore FSM)
-createFsmStore connStr name =
+mkStore :: String -> Text -> IO PostgresJSONStore
+mkStore connStr name =
     let
         connBS = DBSC8.pack connStr
     in do
         pool <- givePool (PGS.connectPostgreSQL connBS)
         withResource pool $ flip _createFsmTable name
-        return (PostgresqlStore pool name :: PostgresqlStore FSM)
+        withResource pool $ flip _createWalTable (append name "Wal")
+        return $ PostgresJSONStore pool name
 
 _createFsmTable :: Connection -> Text -> IO Int64
 _createFsmTable conn name =
@@ -185,9 +181,20 @@ _createFsmTable conn name =
 --   Hence, when in doubt, do not lower the isolation level.
 -- The one even lower isolation level in PostgreSQL, ReadCommitted, does not
 -- protect against concurrent updates and is therefore not suitable.
+
+-- HOWEVER: (disregard everything above)
+-- Since it is a priority to execute effects only once, as good as we can, this changes
+-- the picture. SELECT FOR UPDATE locks the rows matching the query. Concurrent transactions
+-- will block and then abort, once the new value has been inserted. Since we run effects
+-- between SELECT and INSERT, this is what we want.
+-- Concurrent SELECTS (without FOR UPDATE) will be unaffected.
 _getValue :: (FromRow v, ToField k) => Connection -> Text -> k -> IO [v]
 _getValue c tbl k =
     PGS.query c "SELECT * FROM ? WHERE id = ?" (Identifier tbl, k)
+
+_getValueForUpdate :: (FromRow v, ToField k) => Connection -> Text -> k -> IO [v]
+_getValueForUpdate c tbl k =
+    PGS.query c "SELECT * FROM ? WHERE id = ? FOR UPDATE" (Identifier tbl, k)
 
 _postValue :: (ToField k, ToField v) => Connection -> Text -> k -> v -> IO Int64
 _postValue c tbl k v =
@@ -224,3 +231,8 @@ instance (Typeable s, Typeable e, Typeable a,
 
 instance FromRow WALEntry where
     fromRow = WALEntry <$> field <*> field <*> field
+
+deriving instance Generic  WALEntry
+deriving instance Typeable WALEntry
+deriving instance ToJSON   WALEntry
+deriving instance FromJSON WALEntry

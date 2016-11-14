@@ -3,20 +3,23 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleContexts #-}
 
-
-module FSM2FSM where
+module FSM2FSM (runFSM2FSMTests) where
 
 import CommonDefs
 import FSM
 import FSMApi
+import FSMStore
 import FSMTable
-import qualified PostgresqlStore as Store
+import PostgresJSONStore as PGJSON
+import MemoryStore       as MemStore
 
 import Control.Concurrent.QSem
 import Control.Monad (void)
 import Data.Aeson
 import Data.Maybe
+import Data.Text
 import Data.Time
 import Data.Typeable
 import Data.UUID
@@ -53,7 +56,7 @@ paymentTransition (s,e) = case (s,e) of
                                                     else (PaymentPending (o-i),[])
         (PaymentAborted,   _)                    -> (PaymentAborted, [])
 
-paymentEffects :: QSem -> FSMHandle BankAccountState BankAccountEvent BankAccountAction -> Msg PaymentAction -> IO Bool
+paymentEffects :: (FSMStore st (Instance BankAccountState BankAccountEvent BankAccountAction)) => QSem -> FSMHandle st wal BankAccountState BankAccountEvent BankAccountAction -> Msg PaymentAction -> IO Bool
 paymentEffects qsem h (Msg d (PaymentUpdateAccount acc amount)) = do
 
     -- send message to bankaccount FSM
@@ -91,38 +94,39 @@ bankAccountEffects qsem _ = signalQSem qsem >> return True
 -- #######
 -- # TEST
 -- #######
-runFSM2FSMTest c = testCase "FSM2FSM" (runTest c)
+runFSM2FSMTests c =
+    testGroup "FSM2FSM" [
+        testCase "FSM2FSMPG" (runTest (PGJSON.mkStore c)(PGJSON.mkStore c)),
+        testCase "FSM2FSMMem" (runTest (MemStore.mkStore :: Text -> IO(MemoryStore BankAccountState BankAccountEvent BankAccountAction))
+                                       (MemStore.mkStore :: Text -> IO(MemoryStore PaymentState     PaymentEvent     PaymentAction)))
+    ]
+  where
+    runTest c1 c2 = do
+        sync          <- newQSem 0
 
-runTest c = do
-    sync <- newQSem 0
+        st1           <- c1 "FSM2FSMTestBank"
 
-    -- Let's start with the simpler case
-    st1           <- Store.createFsmStore c "FSM2FSMTestBank"
-    wal1          <- Store.createWalStore c "FSM2FSMTestBankWal"
+        let t1         = FSMTable bankAccountTransition (bankAccountEffects sync)
+        let bankFsm    = FSMHandle "BankFSM" t1 st1 st1 900 3
 
-    let t1         = FSMTable bankAccountTransition (bankAccountEffects sync)
-    let bankFsm    = FSMHandle "BankFSM" t1 st1 wal1 900
+        -- Using the first handle we can instantiate the second one.
+        st2           <- c2 "FSM2FSMTestPayments"
 
-    -- Using the first handle we can instantiate the second one.
-    st2           <- Store.createFsmStore c "FSM2FSMTestPayments"
-    wal2          <- Store.createWalStore c "FSM2FSMTestPaymentsWal"
+        let t2         = FSMTable paymentTransition (paymentEffects sync bankFsm)
+        let paymentFsm = FSMHandle "PaymentFSM" t2 st2 st2 900 3
 
-    let t2         = FSMTable paymentTransition (paymentEffects sync bankFsm)
-    let paymentFsm = FSMHandle "PaymentFSM" t2 st2 wal2 900
+        paymentId     <- nextRandom
+        bankAccount   <- nextRandom
 
+        msg1          <- mkMsg $ ReceivedPayment bankAccount 1000
+        post  paymentFsm paymentId (PaymentPending 1000)
+        patch paymentFsm paymentId [msg1]
 
-    paymentId   <- nextRandom
-    bankAccount <- nextRandom
+        waitQSem sync
+        waitQSem sync
+        pymtstatus <- get paymentFsm paymentId
+        assert $ pymtstatus == Just PaymentPaid
 
-    msg1       <- mkMsg $ ReceivedPayment bankAccount 1000
-    post  paymentFsm paymentId (PaymentPending 1000)
-    patch paymentFsm paymentId [msg1]
-
-    waitQSem sync
-    waitQSem sync
-    pymtstatus <- get paymentFsm paymentId
-    assert $ pymtstatus == Just PaymentPaid
-
-    -- Now check that the second FSM has been updated as well
-    bankstatus <- get bankFsm bankAccount
-    assert $ bankstatus == Just (BankAccountBalance 1000)
+        -- Now check that the second FSM has been updated as well
+        bankstatus <- get bankFsm bankAccount
+        assert $ bankstatus == Just (BankAccountBalance 1000)

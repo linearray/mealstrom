@@ -1,9 +1,8 @@
-{-# LANGUAGE DataKinds #-}
-
-module FSMEngine(patchPhase1,patchPhase2,evalState) where
 
 -- |This module's purpose is to apply changes to the machine
 -- and run effects.
+module FSMEngine(patchPhase1,patchPhase2,evalState) where
+
 
 import FSM
 import FSMTable
