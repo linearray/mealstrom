@@ -35,9 +35,10 @@ import System.Timeout
 -- This is the interface through which you can interact with a FSM
 -- from the rest of your program.
 data FSMHandle st wal k s e a where
-    FSMHandle :: (FSMStore st k s e a, WALStore wal k, FSMKey k) => {
+    FSMHandle :: (Eq s, Eq e, Eq a, FSMStore st k s e a, WALStore wal k, FSMKey k) => {
         fsmStore   :: st,
         walStore   :: wal,
+        fsmTable   :: FSMTable s e a,
         effTimeout :: Int,
         retryCount :: Int
     } -> FSMHandle st wal k s e a
@@ -65,7 +66,7 @@ patch :: forall st wal k s e a . (FSMStore st k s e a, MealyInstance k s e a, FS
 patch h@FSMHandle{..} k es = do
     openTxn walStore k
 
-    status <- fsmUpdate fsmStore k (Proxy :: Proxy k s e a) ((patchPhase1 es) :: MachineTransformer s e a)
+    status <- fsmUpdate fsmStore k ((patchPhase1 fsmTable es) :: MachineTransformer s e a)
 
     if status /= NotFound
     then recover h k >> return True
@@ -76,7 +77,7 @@ recover :: forall st wal k s e a . (FSMStore st k s e a, MealyInstance k s e a, 
 recover h@FSMHandle{..} k
     | retryCount == 0 = hPutStrLn stderr $ "Alarma! Recovery retries for " ++ Text.unpack (toText k) ++ " exhausted. Giving up!"
     | otherwise =
-        void $ forkFinally (timeout (effTimeout*10^6) (fsmUpdate fsmStore k (Proxy :: Proxy k s e a) (patchPhase2 :: MachineTransformer s e a))) -- (patchPhase2 fsmTable))
+        void $ forkFinally (timeout (effTimeout*10^6) (fsmUpdate fsmStore k (patchPhase2 fsmTable :: MachineTransformer s e a))) -- (patchPhase2 fsmTable))
                            (\case Left exn      -> do       -- the damn thing crashed, print log and try again
                                       hPutStrLn stderr $ "Exception occurred while trying to recover " ++ Text.unpack (toText k)
                                       hPrint stderr exn
@@ -87,12 +88,6 @@ recover h@FSMHandle{..} k
                                   Right (Just Done)    -> closeTxn walStore k    -- All good.
                                   Right (Just Pending) ->                        -- Some actions did not complete successfully.
                                       recover h{retryCount = retryCount - 1} k)
---    where
---        phase2Wrapper x = do
---            let k = key x
---            let m = machine x
---            nm <- patchPhase2 fsmTable m
---            return $ Instance k nm
 
 
 recoverAll :: forall st wal k s e a . (MealyInstance k s e a) => FSMHandle st wal k s e a -> IO ()

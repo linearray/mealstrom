@@ -4,6 +4,8 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module FSM2FSM (runFSM2FSMTests) where
 
@@ -37,6 +39,7 @@ import Test.Tasty.HUnit
 -- #######
 -- # FSM 1
 -- #######
+type PaymentKey   = UUID
 data PaymentState = PaymentPending Int | PaymentPaid | PaymentAborted
     deriving (Eq,Show,Typeable,Generic,ToJSON,FromJSON)
 
@@ -56,7 +59,11 @@ paymentTransition (s,e) = case (s,e) of
                                                     else (PaymentPending (o-i),[])
         (PaymentAborted,   _)                    -> (PaymentAborted, [])
 
-paymentEffects :: (FSMStore st (Instance BankAccountState BankAccountEvent BankAccountAction)) => QSem -> FSMHandle st wal BankAccountState BankAccountEvent BankAccountAction -> Msg PaymentAction -> IO Bool
+paymentEffects :: (FSMStore st BankAccountKey BankAccountState BankAccountEvent BankAccountAction)
+               =>  QSem
+               ->  FSMHandle st wal BankAccountKey BankAccountState BankAccountEvent BankAccountAction
+               ->  Msg PaymentAction
+               ->  IO Bool
 paymentEffects qsem h (Msg d (PaymentUpdateAccount acc amount)) = do
 
     -- send message to bankaccount FSM
@@ -64,9 +71,12 @@ paymentEffects qsem h (Msg d (PaymentUpdateAccount acc amount)) = do
     signalQSem qsem
     return True
 
+instance MealyInstance PaymentKey PaymentState PaymentEvent PaymentAction
+
 -- #######
 -- # FSM 2
 -- #######
+type BankAccountKey   = UUID
 data BankAccountState = BankAccountBalance Int
     deriving (Eq,Show,Typeable,Generic,ToJSON,FromJSON)
 
@@ -90,6 +100,7 @@ bankAccountTransition =
 bankAccountEffects :: QSem -> Msg BankAccountAction -> IO Bool
 bankAccountEffects qsem _ = signalQSem qsem >> return True
 
+instance MealyInstance BankAccountKey BankAccountState BankAccountEvent BankAccountAction
 
 -- #######
 -- # TEST
@@ -97,8 +108,8 @@ bankAccountEffects qsem _ = signalQSem qsem >> return True
 runFSM2FSMTests c =
     testGroup "FSM2FSM" [
         testCase "FSM2FSMPG" (runTest (PGJSON.mkStore c)(PGJSON.mkStore c)),
-        testCase "FSM2FSMMem" (runTest (MemStore.mkStore :: Text -> IO(MemoryStore BankAccountState BankAccountEvent BankAccountAction))
-                                       (MemStore.mkStore :: Text -> IO(MemoryStore PaymentState     PaymentEvent     PaymentAction)))
+        testCase "FSM2FSMMem" (runTest (MemStore.mkStore :: Text -> IO(MemoryStore BankAccountKey BankAccountState BankAccountEvent BankAccountAction))
+                                       (MemStore.mkStore :: Text -> IO(MemoryStore PaymentKey     PaymentState     PaymentEvent     PaymentAction)))
     ]
   where
     runTest c1 c2 = do
@@ -107,13 +118,13 @@ runFSM2FSMTests c =
         st1           <- c1 "FSM2FSMTestBank"
 
         let t1         = FSMTable bankAccountTransition (bankAccountEffects sync)
-        let bankFsm    = FSMHandle "BankFSM" t1 st1 st1 900 3
+        let bankFsm    = FSMHandle st1 st1 t1 900 3
 
         -- Using the first handle we can instantiate the second one.
         st2           <- c2 "FSM2FSMTestPayments"
 
         let t2         = FSMTable paymentTransition (paymentEffects sync bankFsm)
-        let paymentFsm = FSMHandle "PaymentFSM" t2 st2 st2 900 3
+        let paymentFsm = FSMHandle st2 st2 t2 900 3
 
         paymentId     <- nextRandom
         bankAccount   <- nextRandom

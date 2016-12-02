@@ -15,7 +15,7 @@ import           Control.Monad (liftM, ap)
 import           Data.Aeson
 import           Data.Foldable (asum)
 import           Data.Hashable
-import           Data.Maybe (fromJust)
+import           Data.Maybe (fromJust, fromMaybe)
 import           Data.Text (Text)
 import           Data.Time
 import           Data.Typeable (Typeable, typeOf)
@@ -29,19 +29,11 @@ import           TextShow hiding (fromText,toText)
 type MachineTransformer s e a = Machine s e a -> IO (Machine s e a)
 data OutboxStatus             = NotFound | Pending | Done deriving (Eq, Show)
 
-class (MealyMachine s e a, FSMKey k) => MealyInstance k s e a
+class (FSMKey k) => MealyInstance k s e a
 
 class (Hashable k, Eq k) => FSMKey k where
     toText   :: k -> Text
     fromText :: Text -> k
-
-class Eq a => Effects a where
-    effects :: Msg a -> IO Bool
-
-class (Eq s, Eq e) => Transition s e where
-    transition :: (s,e) -> (s,[a])
-
-class (Transition s e, Effects a) => MealyMachine s e a
 
 -- | A change in the FSM is either a (Step Timestamp oldState event newState Actions)
 -- or an increase in a counter.
@@ -141,5 +133,9 @@ instance (FromJSON s, FromJSON e, FromJSON a) => FromJSON (Change s e a) where
 
 -- Other Instances
 instance FSMKey Text where
-    toText = id
+    toText   = id
     fromText = id
+
+instance FSMKey UUID where
+    toText     = UUID.toText
+    fromText a = fromMaybe (error "Conversion from UUID failed") (UUID.fromText a)

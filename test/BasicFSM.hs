@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 module BasicFSM (runBasicTests) where
 
@@ -14,8 +15,15 @@ import CommonDefs
 import Control.Concurrent
 import Control.Concurrent.STM
 import Control.Concurrent.MVar
-import Data.Typeable
 import Data.Aeson
+import Data.Hashable
+import Data.Text                  as Text
+import Data.Text (Text)
+import Data.Time.Clock
+import Data.Typeable
+import Data.UUID
+import Data.UUID.V4
+import Debug.Trace
 import GHC.Generics
 
 import FSM
@@ -25,21 +33,17 @@ import FSMTable
 import WALStore
 import PostgresJSONStore          as PGJSON
 import MemoryStore                as MemStore
-import Data.Text                  as Text
-import Data.Text (Text)
-import Data.Time.Clock
-import Data.UUID
-import Data.UUID.V4
-import Debug.Trace
+
 
 -- ####################
 -- # Connection Example
 -- ####################
-newtype ConnectionKey = ConnectionKey (Int,Int) deriving (Show,Eq)
+newtype ConnectionKey = ConnectionKey (Int,Int) deriving (Show,Eq,Generic,Hashable)
+
 instance FSMKey ConnectionKey where
-    toText (a,b) = Text.pack $ "(" ++ show a ++ "," ++ show b ++ ")"
-    fromText t   = case fmap (read::Int) (splitOn "," $ Text.dropEnd 1 (Text.drop 1 t)) of
-        a:[b] -> (a,b)
+    toText (ConnectionKey (a,b)) = Text.pack $ "(" ++ show a ++ "," ++ show b ++ ")"
+    fromText t = case fmap (\s -> read (unpack s) :: Int) (splitOn "," $ Text.dropEnd 1 (Text.drop 1 t)) of
+        a:[b] -> ConnectionKey (a,b)
         _     -> error ""
 
 data ConnectionState  = New | Open | Closed
@@ -50,6 +54,8 @@ data ConnectionEvent  = Create | Close | Reset
 
 data ConnectionAction = PrintStatusOpened | PrintStatusClosed
     deriving (Eq,Typeable,Generic,ToJSON,FromJSON)
+
+instance MealyInstance ConnectionKey ConnectionState ConnectionEvent ConnectionAction
 
 connEffects :: MVar () -> Msg ConnectionAction -> IO Bool
 connEffects mvar (Msg i c)
@@ -63,16 +69,9 @@ connTransition (s,e) =
         (Open, Close) -> (Closed,[PrintStatusClosed])
         (Open, Reset) -> (Open,  [PrintStatusClosed, PrintStatusOpened])
 
-instance Transition ConnectionState ConnectionEvent where
-    transition = connTransition
-instance Effects ConnectionAction where
-    effects = connEffects
-instance MealyMachine ConnectionState ConnectionEvent ConnectionAction
-instance MealyInstance ConnectionKey ConnectionState ConnectionEvent ConnectionAction
-
 runBasicTests c = testGroup "BasicFSM" [
-    testCase "BasicPG" (runTest (PGJSON.mkStore c)),
-    testCase "BasicMem0" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore ConnectionKey ConnectionState ConnectionEvent ConnectionAction)))
+    testCase "BasicPG" (runTest (PGJSON.mkStore c))
+    --testCase "BasicMem0" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore ConnectionKey ConnectionState ConnectionEvent ConnectionAction)))
     ]
 
 runTest :: (FSMStore st ConnectionKey ConnectionState ConnectionEvent ConnectionAction,
@@ -80,9 +79,9 @@ runTest :: (FSMStore st ConnectionKey ConnectionState ConnectionEvent Connection
 runTest c = do
     st       <- c "BasicFSMTest"
     sync     <- newEmptyMVar
---    let t     = FSMTable connTransition (connEffects sync)
-    let myFSM = FSMHandle "BasicFSMTest" st st 90 3
-    let firstId = (1231231,21)
+    let t     = FSMTable connTransition (connEffects sync)
+    let myFSM = FSMHandle st st t 90 3
+    let firstId = ConnectionKey (1231231,21)   -- This could be a socket or something
 
     post myFSM firstId New
     Just fsmState <- get myFSM firstId

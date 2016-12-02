@@ -3,8 +3,8 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
-
-
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Timeout(runTimeoutTests) where
 
@@ -33,9 +33,12 @@ import Data.UUID
 import Data.UUID.V4
 import Debug.Trace
 
+type TimeoutKey    = UUID
 data TimeoutState  = TimeoutState  deriving (Eq,Show,Generic,Typeable,ToJSON,FromJSON)
 data TimeoutEvent  = TimeoutEvent  deriving (Eq,Show,Generic,Typeable,ToJSON,FromJSON)
 data TimeoutAction = TimeoutAction deriving (Eq,Show,Generic,Typeable,ToJSON,FromJSON)
+
+instance MealyInstance TimeoutKey TimeoutState TimeoutEvent TimeoutAction
 
 timeoutTransition :: (TimeoutState,TimeoutEvent) -> (TimeoutState,[TimeoutAction])
 timeoutTransition (TimeoutState,TimeoutEvent) = (TimeoutState,[TimeoutAction])
@@ -52,8 +55,8 @@ timeoutEffects b sync a = do
 
 
 runTimeoutTests c = testGroup "Timeout" [
-    testCase "TimeoutPG" (runTest $ PGJSON.mkStore c)
-    --testCase "TimeoutMem" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore TimeoutState TimeoutEvent TimeoutAction)))
+    testCase "TimeoutPG" (runTest $ PGJSON.mkStore c),
+    testCase "TimeoutMem" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore TimeoutKey TimeoutState TimeoutEvent TimeoutAction)))
     ]
 
 runTest c = do
@@ -63,7 +66,7 @@ runTest c = do
     sync   <- newEmptyMVar
 
     let t   = FSMTable timeoutTransition (timeoutEffects b sync)
-    let fsm = FSMHandle "TimeoutFSM" t st st 1 2    -- timeout of 1 second and we only try once
+    let fsm = FSMHandle st st t 1 2    -- timeout of 1 second and we only try once
 
     i      <- nextRandom
 

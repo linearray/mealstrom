@@ -1,8 +1,8 @@
 import BasicFSM (runBasicTests)
---import FSM2FSM (runFSM2FSMTests)
---import CounterFSM (runCounterTests)
---import Recovery (runRecoveryTests)
---import Timeout (runTimeoutTests)
+import FSM2FSM (runFSM2FSMTests)
+import CounterFSM (runCounterTests)
+import Recovery (runRecoveryTests)
+import Timeout (runTimeoutTests)
 
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Types
@@ -19,9 +19,9 @@ main =
         execute_ conn $ Query (DBSC8.pack "DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
 
         defaultMain $ testGroup "All tests" [
-            runBasicTests c
---            runFSM2FSMTests c,
---            runCounterTests c,
---            runRecoveryTests c,
---            runTimeoutTests c
+            runBasicTests c,
+            runFSM2FSMTests c,
+            runCounterTests c,
+            runRecoveryTests c,
+            runTimeoutTests c
             ]

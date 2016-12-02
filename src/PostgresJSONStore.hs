@@ -7,7 +7,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RankNTypes #-}
 
 -- |This module is the main backing for FSMs. Instances are stored in a table
@@ -53,7 +52,7 @@ instance (FromJSON s, FromJSON e, FromJSON a,
           MealyInstance k s e a)              => FSMStore PostgresJSONStore k s e a where
     fsmRead st k p = PostgresJSONStore.fsmRead st k p >>= \mi -> return $ fmap (currState . machine) mi
     fsmCreate      = PostgresJSONStore.fsmCreate
-    fsmUpdate      = undefined --PostgresJSONStore.fsmUpdate
+    fsmUpdate      = PostgresJSONStore.fsmUpdate
 
 instance (FSMKey k) => WALStore PostgresJSONStore k where
     walUpsertIncrement = PostgresJSONStore.walUpsertIncrement
@@ -168,7 +167,7 @@ mkStore connStr name =
 
 _createFsmTable :: Connection -> Text -> IO Int64
 _createFsmTable conn name =
-    PGS.execute conn "CREATE TABLE IF NOT EXISTS ? ( id uuid PRIMARY KEY, data jsonb NOT NULL)" (Only (Identifier name))
+    PGS.execute conn "CREATE TABLE IF NOT EXISTS ? ( id text PRIMARY KEY, data jsonb NOT NULL)" (Only (Identifier name))
 
 -- |A brief lesson on transaction isolation:
 -- According to the SQL standard Serializable is the *only* isolation level

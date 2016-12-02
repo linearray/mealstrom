@@ -3,6 +3,8 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module CounterFSM (runCounterTests) where
 
@@ -29,6 +31,8 @@ import Data.UUID
 import Data.UUID.V4
 import Debug.Trace
 
+
+type CounterKey   = UUID
 data CounterState = Desu
     deriving (Eq,Show,Typeable)
 instance ToJSON CounterState where
@@ -53,6 +57,8 @@ instance FromJSON CounterAction where
     parseJSON "DesuDummyAction" = return DesuDummyAction
 
 
+instance MealyInstance CounterKey CounterState CounterEvent CounterAction
+
 counterTransition :: (CounterState, CounterEvent) -> (CounterState,[CounterAction])
 counterTransition =
     \case (Desu, DesuEvent) -> (Desu,[DesuDummyAction])
@@ -64,7 +70,7 @@ counterEffects mvar _ =
 
 runCounterTests c = testGroup "CounterFSM" [
     testCase "CounterPG" (runTest $ PGJSON.mkStore c),
-    testCase "CounterMem" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore CounterState CounterEvent CounterAction)))
+    testCase "CounterMem" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore CounterKey CounterState CounterEvent CounterAction)))
     ]
 
 runTest c = do
@@ -73,7 +79,7 @@ runTest c = do
     st     <- c "CounterTest"
 
     let t   = FSMTable counterTransition (counterEffects sync)
-    let fsm = FSMHandle "CounterFSM" t st st 900 3
+    let fsm = FSMHandle st st t 900 3
 
     i      <- nextRandom
     post fsm i Desu

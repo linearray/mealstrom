@@ -38,7 +38,7 @@ instance (MealyInstance k s e a) => FSMStore (MemoryStore k s e a) k s e a where
         may <- atomically (_fsmRead st k)
         return $ fmap (currState . machine) may
     fsmCreate st a  = atomically $ _fsmCreate st a
-    fsmUpdate st k _p t = _fsmUpdate st k t
+    fsmUpdate st k t = _fsmUpdate st k t
 
 instance WALStore (MemoryStore k s e a) k where
     walUpsertIncrement      =              MemoryStore.walUpsertIncrement

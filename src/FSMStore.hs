@@ -14,4 +14,4 @@ data Proxy k s e a = Proxy
 class FSMStore st k s e a where
     fsmRead   :: st -> k -> Proxy k s e a -> IO (Maybe s)
     fsmCreate :: st -> Instance k s e a -> IO ()
-    fsmUpdate :: st -> k -> Proxy k s e a -> MachineTransformer s e a -> IO OutboxStatus
+    fsmUpdate :: st -> k -> MachineTransformer s e a -> IO OutboxStatus
