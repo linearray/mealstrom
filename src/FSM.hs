@@ -2,6 +2,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -- | Machine Definitions
 -- These defintions are concerned with the basic functions of
@@ -9,21 +11,37 @@
 
 module FSM where
 
-import Control.Monad (liftM, ap)
-import Data.Aeson
-import Data.Foldable (asum)
-import Data.Maybe (fromJust)
-import Data.Text (Text)
-import Data.Time
-import Data.Typeable (Typeable, typeOf)
-import Data.UUID
-import Data.UUID.V4
-import GHC.Generics
-import System.IO.Unsafe (unsafePerformIO)
+import           Control.Monad (liftM, ap)
+import           Data.Aeson
+import           Data.Foldable (asum)
+import           Data.Hashable
+import           Data.Maybe (fromJust)
+import           Data.Text (Text)
+import           Data.Time
+import           Data.Typeable (Typeable, typeOf)
+import qualified Data.UUID as UUID
+import           Data.UUID (UUID)
+import           Data.UUID.V4
+import           GHC.Generics
+import           System.IO.Unsafe (unsafePerformIO)
+import           TextShow hiding (fromText,toText)
 
-type Transformer s e a = Instance s e a -> IO (Instance s e a)
-data OutboxStatus      = NotFound | Pending | Done deriving (Eq,Show)
+type MachineTransformer s e a = Machine s e a -> IO (Machine s e a)
+data OutboxStatus             = NotFound | Pending | Done deriving (Eq, Show)
 
+class (MealyMachine s e a, FSMKey k) => MealyInstance k s e a
+
+class (Hashable k, Eq k) => FSMKey k where
+    toText   :: k -> Text
+    fromText :: Text -> k
+
+class Eq a => Effects a where
+    effects :: Msg a -> IO Bool
+
+class (Eq s, Eq e) => Transition s e where
+    transition :: (s,e) -> (s,[a])
+
+class (Transition s e, Effects a) => MealyMachine s e a
 
 -- | A change in the FSM is either a (Step Timestamp oldState event newState Actions)
 -- or an increase in a counter.
@@ -36,12 +54,10 @@ instance (Eq s, Eq e) => Eq (Change s e a) where
     (==) (Count a) (Count b) = a == b
     (==) (Step _ os1 e1 ns1 _) (Step _ os2 e2 ns2 _) = (os1 == os2) && (e1 == e2) && (ns1 == ns2)
 
-data IdStatus = Valid | Invalid deriving (Show,Eq)
-
 -- |One instance is akin to one entry in a DB table.
 -- Instances are identified by a UUID.
-data Instance s e a = Instance {
-    uuid    :: UUID,
+data Instance k s e a = Instance {
+    key     :: k,
     machine :: Machine s e a
 } deriving (Eq,Show,Generic,Typeable)
 
@@ -58,11 +74,11 @@ data Machine s e a = Machine {
 mkEmptyMachine :: s -> Machine s e a
 mkEmptyMachine s = Machine [] [] [] s s []
 
-mkEmptyInstance :: s -> IO (Instance s e a)
-mkEmptyInstance s = nextRandom >>= \u -> return $ Instance u (mkEmptyMachine s)
+mkEmptyInstance :: k -> s -> Instance k s e a
+mkEmptyInstance k s = Instance k (mkEmptyMachine s)
 
-mkInstance :: UUID -> s -> [Msg e] -> Instance s e a
-mkInstance i s es = Instance i ((mkEmptyMachine s) {inbox = es})
+mkInstance :: k -> s -> [Msg e] -> Instance k s e a
+mkInstance k s es = Instance k ((mkEmptyMachine s) {inbox = es})
 
 
 -- |Type of messages that are sent between FSMs
@@ -98,10 +114,10 @@ _append s ss = s:ss
 -- # JSON Codecs
 -- ##############
 instance ToJSON UUID where
-    toJSON u = toJSON (toText u)
+    toJSON u = toJSON (UUID.toText u)
 
 instance FromJSON UUID where
-    parseJSON = withText "UUID" $ \x -> return . fromJust $ fromText x
+    parseJSON = withText "UUID" $ \x -> return . fromJust $ UUID.fromText x
 
 instance (ToJSON s, ToJSON e, ToJSON a) => ToJSON (Change s e a) where
     toJSON (Count i) = object [ "count" .= toJSON i]
@@ -121,3 +137,9 @@ instance (FromJSON s, FromJSON e, FromJSON a) => FromJSON (Change s e a) where
                 Count <$> o .: "count",
                 Step  <$> o .: "timestamp" <*> o .: "old_state" <*> o .: "event" <*> o .: "new_state" <*> o .: "actions"
             ]
+
+
+-- Other Instances
+instance FSMKey Text where
+    toText = id
+    fromText = id

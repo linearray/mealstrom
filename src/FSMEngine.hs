@@ -1,20 +1,21 @@
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- |This module's purpose is to apply changes to the machine
 -- and run effects.
-module FSMEngine(patchPhase1,patchPhase2,evalState) where
-
+module FSMEngine(patchPhase1,patchPhase2) where
 
 import FSM
-import FSMTable
 
 import Control.Monad (filterM, liftM, (>=>), void)
+import Data.List
 
 -- |patchPhase1 is the part of a "change" to an FSM that happens synchronously.
-patchPhase1 :: (Eq s, Eq e, Eq a) => FSMTable s e a -> [Msg e] -> Machine s e a -> IO (Machine s e a)
-patchPhase1 t es m = eval t (sendMultiple m es)
+patchPhase1 :: (MealyMachine s e a) => [Msg e] -> Machine s e a -> IO (Machine s e a)
+patchPhase1 es m = eval (sendMultiple m es)
 
 -- |patchPhase2 is the part of a "change" to an FSM that happens *asynchronously*.
-patchPhase2 :: (Eq s, Eq e, Eq a) =>  FSMTable s e a -> Machine s e a -> IO (Machine s e a)
+patchPhase2 :: (MealyMachine s e a) => Machine s e a -> IO (Machine s e a)
 patchPhase2 = apply
 
 
@@ -34,25 +35,25 @@ send m e =
         then m
         else m {inbox = ibox ++ [e]}
 
-evalState :: (Eq s, Eq e, Eq a) => FSMTable s e a -> Machine s e a -> s
-evalState t m =
-    let
-        ibox         = inbox m
-        obox         = outbox m
-        (ids,events) = foldr (\m@(Msg i e) (is,es) -> (i:is,e:es)) ([],[]) ibox
-        (newm,_)     = closure (transitions t) m events
-    in
-        currState newm
+--evalState :: (MealyMachine s e a) => Machine s e a -> s
+--evalState m =
+--    let
+--        ibox         = inbox m
+--        obox         = outbox m
+--        (ids,events) = foldr (\m@(Msg i e) (is,es) -> (i:is,e:es)) ([],[]) ibox
+--        (newm,_)     = closure m events
+--    in
+--        currState newm
 
 -- |Calculate the state changes in response to a message
-eval :: (Eq s, Eq e, Eq a) => FSMTable s e a -> Machine s e a -> IO (Machine s e a)
-eval t m =
+eval :: (MealyMachine s e a) => Machine s e a -> IO (Machine s e a)
+eval m =
     let
         ibox         = inbox m
         obox         = outbox m
         comm         = committed m
         (ids,events) = foldr (\m@(Msg (Just i) e) (is,es) -> (i:is,e:es)) ([],[]) ibox
-        (newm,as)    = closure (transitions t) m events
+        (newm,as)    = closure m events
         asmsgs       = map mkMsg as
     in do
         s <- sequence asmsgs
@@ -60,12 +61,25 @@ eval t m =
 
 -- |Take messages from outbox and apply the effects.
 -- Failed applications of effects shall remain in the outbox.
-apply :: (Eq s, Eq e) => FSMTable s e a -> Machine s e a -> IO (Machine s e a)
-apply t m =
-    let
-        obox = outbox m
-        eff  = effects t
-    in do
-        newas <- filterM (liftM not . eff) obox
+apply :: (MealyMachine s e a) => Machine s e a -> IO (Machine s e a)
+apply m = do
+    newas <- filterM effects (outbox m)
 
-        return $ m {outbox = newas}
+    return $ m {outbox = newas}
+
+-- |Apply a list of events to a Memory according to a transition function
+closure :: (MealyMachine s e a) => Machine s e a -> [e] -> (Machine s e a, [a])
+closure m@Machine{..} =
+    foldl' (\(mym,oldas) e ->
+        let (newm, newas) = step m e in
+            (newm, oldas ++ newas)
+    ) (m,[])
+
+-- |Calculates a new Memory, according to the transition function, for one event.
+step :: (MealyMachine s e a) => Machine s e a -> e -> (Machine s e a, [a])
+step Machine{..} e =
+    let
+        (newState,as) = transition (currState,e)
+        newHist       = _append (Step 0 currState e newState as) hist
+    in
+      (Machine inbox outbox committed initState newState newHist, as)

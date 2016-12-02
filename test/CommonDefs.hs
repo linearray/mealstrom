@@ -20,11 +20,11 @@ cutOff = 2
 
 
 busyWaitForState ::
-    forall st wal s e a . (FromJSON s, FromJSON e, FromJSON a,
-                           Typeable s, Typeable e, Typeable a,
-                           Eq s, Eq e, Eq a, FSMStore st (Instance s e a))
-                    => FSMHandle st wal s e a
-                    -> UUID
+    forall st wal k s e a . (FromJSON s, FromJSON e, FromJSON a,
+                             Typeable s, Typeable e, Typeable a,
+                             Eq s, Eq e, Eq a, MealyInstance k s e a, FSMStore st k s e a)
+                    => FSMHandle st wal k s e a
+                    -> k
                     -> s
                     -> UTCTime
                     -> IO Bool

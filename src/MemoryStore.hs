@@ -3,6 +3,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
 
 
 -- |STM container for keeping mappings UUID -> Instance s e a
@@ -30,97 +33,100 @@ import FSMStore
 import WALStore
 
 
-instance FSMStore (MemoryStore s e a) (Instance s e a) where
-    fsmRead   st i   = atomically $ _fsmRead st i
-    fsmCreate st a   = atomically $ _fsmCreate st a
-    fsmUpdate        =              _fsmUpdate
+instance (MealyInstance k s e a) => FSMStore (MemoryStore k s e a) k s e a where
+    fsmRead st k _p = do
+        may <- atomically (_fsmRead st k)
+        return $ fmap (currState . machine) may
+    fsmCreate st a  = atomically $ _fsmCreate st a
+    fsmUpdate st k _p t = _fsmUpdate st k t
 
-instance WALStore (MemoryStore s e a) where
+instance WALStore (MemoryStore k s e a) k where
     walUpsertIncrement      =              MemoryStore.walUpsertIncrement
-    walDecrement       st i = atomically $ MemoryStore.walDecrement st i
+    walDecrement       st k = atomically $ MemoryStore.walDecrement st k
     walScan                 =              MemoryStore.walScan
 
-data MemoryStore s e a = MemoryStore {
-    memstoreName    :: Text,
-    memstoreBacking :: Map UUID (Instance s e a),
-    memstoreLocks   :: Map UUID (TMVar ()),
-    memstoreWals    :: Map UUID (UTCTime,Int)
-}
+data MemoryStore k s e a where
+    MemoryStore :: (MealyInstance k s e a) => {
+        memstoreName    :: Text,
+        memstoreBacking :: Map k (Instance k s e a),
+        memstoreLocks   :: Map k (TMVar ()),
+        memstoreWals    :: Map k (UTCTime,Int)
+    } -> MemoryStore k s e a
 
-_fsmRead :: MemoryStore s e a -> UUID -> STM (Maybe (Instance s e a))
-_fsmRead mst i = Map.lookup i (memstoreBacking mst) >>= \case
+_fsmRead :: forall k s e a . MemoryStore k s e a -> k -> STM (Maybe (Instance k s e a))
+_fsmRead mst@MemoryStore{..} k = Map.lookup k memstoreBacking >>= \case
     Just a -> return $ Just a
     _      -> return Nothing
 
-_fsmCreate :: MemoryStore s e a -> Instance s e a -> STM ()
-_fsmCreate mst ins = do
+_fsmCreate :: forall k s e a . MemoryStore k s e a -> Instance k s e a -> STM ()
+_fsmCreate mst@MemoryStore{..} ins = do
     t <- newTMVar ()
-    Map.insert t   (uuid ins) (memstoreLocks mst)
-    Map.insert ins (uuid ins) (memstoreBacking mst)
+    Map.insert t   (key ins) memstoreLocks
+    Map.insert ins (key ins) memstoreBacking
 
 -- |We need to use a lock here, because we are in the unfortunate position of
 -- having to use IO while performing STM operations, which is not possible.
 -- Using the lock we can rest assured no concurrent update operation can progress.
-_fsmUpdate :: MemoryStore s e a -> UUID -> Transformer s e a -> IO OutboxStatus
-_fsmUpdate mst i t =
+_fsmUpdate :: MemoryStore k s e a -> k -> MachineTransformer s e a -> IO OutboxStatus
+_fsmUpdate mst@MemoryStore{..} k t =
     let
-        m  = memstoreBacking mst
-        ls = memstoreLocks mst
+        m  = memstoreBacking
+        ls = memstoreLocks
     in
-        atomically (Map.lookup i ls) >>= \lock ->
+        atomically (Map.lookup k ls) >>= \lock ->
             maybe (return NotFound)
                   (\l ->
                       bracket_ (atomically $ takeTMVar l)
                                (atomically $ putTMVar l ())
-                               (atomically (Map.lookup i m) >>= \res ->
+                               (atomically (Map.lookup k m) >>= \res ->
                                    maybe (return NotFound)
                                          (\inst ->
                                              (do
-                                                 newInst <- t inst
-                                                 let r = if Prelude.null (outbox (machine newInst)) then Done else Pending
-                                                 atomically $ Map.insert newInst i m
+                                                 newMach <- t (machine inst)
+                                                 let r = if Prelude.null (outbox newMach) then Done else Pending
+                                                 atomically $ Map.insert inst{machine=newMach} k m
                                                  return r
                                              )
                                          ) res)
                   )
                   lock
 
-walUpsertIncrement :: MemoryStore s e a -> UUID -> IO ()
-walUpsertIncrement mst i = let m = memstoreWals mst in
+walUpsertIncrement :: MemoryStore k s e a -> k -> IO ()
+walUpsertIncrement mst@MemoryStore{..} k =
     getCurrentTime >>= \t -> atomically $
-        Map.lookup i m >>= \res ->
-            maybe (Map.insert (t,1) i m)
-                  (\(t,w) -> Map.insert (t,w+1) i m)
+        Map.lookup k memstoreWals >>= \res ->
+            maybe (Map.insert (t,1) k memstoreWals)
+                  (\(t,w) -> Map.insert (t,w+1) k memstoreWals)
                   res
 
-walDecrement :: MemoryStore s e a -> UUID -> STM ()
-walDecrement mst i = let m = memstoreWals mst in
-    Map.lookup i m >>= \res ->
+walDecrement :: MemoryStore k s e a -> k -> STM ()
+walDecrement mst@MemoryStore{..} k =
+    Map.lookup k memstoreWals >>= \res ->
         maybe (error "trying to recover non-existing entry")
-              (\(t,w) -> Map.insert (t,w-1) i m)
+              (\(t,w) -> Map.insert (t,w-1) k memstoreWals)
               res
 
-walScan :: MemoryStore s e a -> Int -> IO [WALEntry]
-walScan mst cutoff = let m = memstoreWals mst in
+walScan :: MemoryStore k s e a -> Int -> IO [WALEntry k]
+walScan mst@MemoryStore{..} cutoff =
     getCurrentTime >>= \t -> atomically $
         let xx = addUTCTime (negate (fromInteger (toInteger cutoff) :: NominalDiffTime)) t in
 
         ListT.fold (\acc (k,(t,w)) -> if t < xx
                                     then return (WALEntry k t w : acc)
-                                    else return acc) [] (stream m)
+                                    else return acc) [] (stream memstoreWals)
 
 
-printWal :: MemoryStore s e a -> UUID -> IO ()
-printWal mst i = let m = memstoreWals mst in
-    atomically (Map.lookup i m) >>= \res ->
+printWal :: MemoryStore k s e a -> k -> IO ()
+printWal mst@MemoryStore{..} k =
+    atomically (Map.lookup k memstoreWals) >>= \res ->
         maybe (putStrLn "NO WAL")
               print
               res
 
 
-mkStore :: Text -> IO (MemoryStore s e a)
+mkStore :: (MealyInstance k s e a) => Text -> IO (MemoryStore k s e a)
 mkStore name = atomically $ do
-    back  <- new :: STM (Map UUID (Instance s e a))
-    locks <- new :: STM (Map UUID (TMVar ()))
-    wals  <- new :: STM (Map UUID (UTCTime,Int))
+    back  <- new :: STM (Map k (Instance k s e a))
+    locks <- new :: STM (Map k (TMVar ()))
+    wals  <- new :: STM (Map k (UTCTime,Int))
     return $ MemoryStore name back locks wals

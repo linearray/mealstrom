@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 {-|
 Module      : WALStore
@@ -18,13 +19,13 @@ import Data.UUID
 
 import FSM
 
-class WALStore st where
-    walUpsertIncrement :: st -> UUID -> IO ()
-    walDecrement       :: st -> UUID -> IO ()
-    walScan            :: st -> Int  -> IO [WALEntry]
+class WALStore st k where
+    walUpsertIncrement :: st -> k -> IO ()
+    walDecrement       :: st -> k -> IO ()
+    walScan            :: st -> Int  -> IO [WALEntry k]
 
-data WALEntry = WALEntry {
-    walId    :: UUID,
+data WALEntry k = WALEntry {
+    walId    :: k,
     walTime  :: UTCTime,
     walCount :: Int
 } deriving (Show,Eq)

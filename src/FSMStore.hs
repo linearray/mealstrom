@@ -1,15 +1,17 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module FSMStore where
 
 import Data.UUID
 import FSM
 
-class FSMStore st a where
-    fsmRead            :: st -> UUID                   -> IO (Maybe a)
-    fsmCreate          :: st -> a                      -> IO ()
-    fsmUpdate          :: st -> UUID    -> (a -> IO a) -> IO OutboxStatus
+data Proxy k s e a = Proxy
 
--- FIXME: The fact that (a -> IO a) means we end up with (Instance s e a -> IO (Instance s e a))
--- leaves a bad taste. Right now the stores just ignore the new ID returned and use the old one
--- instead. Hopefully a better solution that doesn't lead to a ton of problems will come up.
+-- |Even the Read class needs type parameters 'e' and 'a' because it needs to deserialise the entry from storage.
+class FSMStore st k s e a where
+    fsmRead   :: st -> k -> Proxy k s e a -> IO (Maybe s)
+    fsmCreate :: st -> Instance k s e a -> IO ()
+    fsmUpdate :: st -> k -> Proxy k s e a -> MachineTransformer s e a -> IO OutboxStatus

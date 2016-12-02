@@ -4,8 +4,8 @@ import Data.UUID
 
 import WALStore
 
-openTxn :: WALStore st => st -> UUID -> IO ()
+openTxn :: WALStore st k => st -> k -> IO ()
 openTxn = walUpsertIncrement
 
-closeTxn :: WALStore st => st -> UUID -> IO ()
+closeTxn :: WALStore st k => st -> k -> IO ()
 closeTxn = walDecrement

@@ -5,6 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 
 module FSMApi where
@@ -22,44 +23,37 @@ import Control.Monad (liftM,forM,void)
 import Data.Aeson
 import Data.Foldable (forM_)
 import Data.Maybe
-import Data.Text
+import qualified Data.Text as Text
+import Data.Text (Text)
 import Data.Time
-import Data.Typeable
-import Data.UUID
+import Data.Typeable hiding (Proxy)
 import GHC.Generics
 import System.IO
 import System.Timeout
 
-
 -- |API for FSMs.
 -- This is the interface through which you can interact with a FSM
 -- from the rest of your program.
-data FSMHandle st wal s e a where
-    FSMHandle :: (FSMStore st (Instance s e a), WALStore wal, Eq s, Eq e, Eq a) => {
-        fsmName       :: Text,
-        fsmTable      :: FSMTable s e a,
-        fsmStore      :: st,
-        walStore      :: wal,
-        effTimeout    :: Int,
-        retryCount    :: Int
-    } -> FSMHandle st wal s e a
+data FSMHandle st wal k s e a where
+    FSMHandle :: (FSMStore st k s e a, WALStore wal k, FSMKey k) => {
+        fsmStore   :: st,
+        walStore   :: wal,
+        effTimeout :: Int,
+        retryCount :: Int
+    } -> FSMHandle st wal k s e a
 
 
-get :: forall st wal s e a . FSMStore st (Instance s e a) =>
-       FSMHandle st wal s e a -> UUID                     -> IO(Maybe s)
-get h@FSMHandle{..} i = fmap (fmap (evalState fsmTable . machine)) res
-  where
-      res = fsmRead fsmStore i :: IO (Maybe (Instance s e a))
-
+get :: forall st wal k s e a . FSMStore st k s e a => FSMHandle st wal k s e a -> k -> IO(Maybe s)
+get h@FSMHandle{..} k = fsmRead fsmStore k (Proxy :: Proxy k s e a)
 
 -- |Idempotent because of usage of caller-generated UUIDs
 -- FIXME: This can throw an exception.
-post :: forall st wal s e a . FSMStore st (Instance s e a) =>
-        FSMHandle st wal s e a                             ->
-        UUID                                               ->
-        s                                                  -> IO ()
-post h@FSMHandle{..} i s0 =
-    fsmCreate fsmStore (mkInstance i s0 [] :: Instance s e a)
+post :: forall st wal k s e a . FSMStore st k s e a =>
+        FSMHandle st wal k s e a                                 ->
+        k                                                        ->
+        s                                                        -> IO ()
+post h@FSMHandle{..} k s0 =
+    fsmCreate fsmStore (mkInstance k s0 [] :: Instance k s e a)
 
 
 -- |Concurrent updates will be serialised by Postgres.
@@ -67,58 +61,51 @@ post h@FSMHandle{..} i s0 =
 -- Return True when the state transition has been successfully computed
 -- and actions have been scheduled.
 -- Returns False on failure to compute state transition.
-patch :: forall st wal s e a . FSMHandle st wal s e a -> UUID -> [Msg e] -> IO Bool
-patch h@FSMHandle{..} i es = do
-    openTxn walStore i
+patch :: forall st wal k s e a . (FSMStore st k s e a, MealyInstance k s e a, FSMKey k) => FSMHandle st wal k s e a -> k -> [Msg e] -> IO Bool
+patch h@FSMHandle{..} k es = do
+    openTxn walStore k
 
-    status <- fsmUpdate fsmStore i phase1Wrapper -- (patchPhase1 fsmTable es)
+    status <- fsmUpdate fsmStore k (Proxy :: Proxy k s e a) ((patchPhase1 es) :: MachineTransformer s e a)
 
     if status /= NotFound
-    then recover h i >> return True
+    then recover h k >> return True
     else return False
 
-  where
-      phase1Wrapper x = do
-        let k = uuid x
-        let m = machine x
-        nm <- patchPhase1 fsmTable es m
-        return $ Instance k nm
 
-
-recover :: forall st wal s e a . FSMHandle st wal s e a -> UUID -> IO ()
-recover h@FSMHandle{..} i
-    | retryCount == 0 = hPutStrLn stderr $ "Alarma! Recovery retries for " ++ show i ++ " exhausted. Giving up!"
+recover :: forall st wal k s e a . (FSMStore st k s e a, MealyInstance k s e a, FSMKey k) => FSMHandle st wal k s e a -> k -> IO ()
+recover h@FSMHandle{..} k
+    | retryCount == 0 = hPutStrLn stderr $ "Alarma! Recovery retries for " ++ Text.unpack (toText k) ++ " exhausted. Giving up!"
     | otherwise =
-        void $ forkFinally (timeout (effTimeout*10^6) (fsmUpdate fsmStore i phase2Wrapper)) -- (patchPhase2 fsmTable))
+        void $ forkFinally (timeout (effTimeout*10^6) (fsmUpdate fsmStore k (Proxy :: Proxy k s e a) (patchPhase2 :: MachineTransformer s e a))) -- (patchPhase2 fsmTable))
                            (\case Left exn      -> do       -- the damn thing crashed, print log and try again
-                                      hPutStrLn stderr $ "Exception occurred while trying to recover " ++ show i
+                                      hPutStrLn stderr $ "Exception occurred while trying to recover " ++ Text.unpack (toText k)
                                       hPrint stderr exn
-                                      recover h{retryCount = retryCount - 1} i
+                                      recover h{retryCount = retryCount - 1} k
                                   Right Nothing -> do       -- We hit the timeout. Try again until we hit the retry limit.
-                                      hPutStrLn stderr $ "Timeout while trying to recover " ++ show i
-                                      recover h{retryCount = retryCount - 1} i
-                                  Right (Just Done)    -> closeTxn walStore i    -- All good.
+                                      hPutStrLn stderr $ "Timeout while trying to recover " ++ Text.unpack (toText k)
+                                      recover h{retryCount = retryCount - 1} k
+                                  Right (Just Done)    -> closeTxn walStore k    -- All good.
                                   Right (Just Pending) ->                        -- Some actions did not complete successfully.
-                                      recover h{retryCount = retryCount - 1} i)
-    where
-        phase2Wrapper x = do
-            let k = uuid x
-            let m = machine x
-            nm <- patchPhase2 fsmTable m
-            return $ Instance k nm
+                                      recover h{retryCount = retryCount - 1} k)
+--    where
+--        phase2Wrapper x = do
+--            let k = key x
+--            let m = machine x
+--            nm <- patchPhase2 fsmTable m
+--            return $ Instance k nm
 
 
-recoverAll :: forall st wal s e a . FSMHandle st wal s e a -> IO ()
+recoverAll :: forall st wal k s e a . (MealyInstance k s e a) => FSMHandle st wal k s e a -> IO ()
 recoverAll h@FSMHandle{..} = do
     wals <- walScan walStore effTimeout
     mapM_ (recover h . walId) wals
 
 
 -- |A helper that is sometimes useful
-upsert :: forall st wal s e a . FSMStore st (Instance s e a) =>
-                                FSMHandle st wal s e a -> UUID -> s -> [Msg e] -> IO ()
-upsert h i s es = do
-    ms <- get h i
-    maybe (post h i s >> void (patch h i es))
-          (\s -> void $ patch h i es)
+upsert :: forall st wal k s e a . MealyInstance k s e a => FSMStore st k s e a =>
+          FSMHandle st wal k s e a -> k -> s -> [Msg e] -> IO ()
+upsert h k s es = do
+    ms <- get h k
+    maybe (post h k s >> void (patch h k es))
+          (\s -> void $ patch h k es)
           ms
