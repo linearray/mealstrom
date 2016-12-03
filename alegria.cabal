@@ -41,9 +41,11 @@ library
   exposed-modules:     FSM,
                        FSMApi,
                        FSMEngine,
+                       FSMStore,
                        FSMTable,
                        MemoryStore,
-                       PostgresJSONStore
+                       PostgresJSONStore,
+                       WALStore
   ghc-options:
 
 test-suite test

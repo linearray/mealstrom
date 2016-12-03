@@ -6,6 +6,17 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
+{-|
+Module      : CounterFSM
+Description : Show how to "compress" multiple events into one.
+Copyright   : (c) Max Amanshauser, 2016
+License     : MIT
+Maintainer  : max@lambdalifting.org
+
+After this test has run the DB table should show a "Count" entry
+instead of ten individual Desu events.
+-}
+
 module CounterFSM (runCounterTests) where
 
 import Test.Tasty
@@ -24,8 +35,8 @@ import GHC.Generics
 import FSM
 import FSMApi
 import FSMTable
-import PostgresJSONStore as PGJSON
-import MemoryStore       as MemStore
+import PostgresJSONStore       as PGJSON
+import MemoryStore             as MemStore
 import Data.Time.Clock
 import Data.UUID
 import Data.UUID.V4

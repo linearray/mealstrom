@@ -1,13 +1,13 @@
-import BasicFSM (runBasicTests)
-import FSM2FSM (runFSM2FSMTests)
+import BasicFSM   (runBasicTests)
+import FSM2FSM    (runFSM2FSMTests)
 import CounterFSM (runCounterTests)
-import Recovery (runRecoveryTests)
-import Timeout (runTimeoutTests)
+import Recovery   (runRecoveryTests)
+import Timeout    (runTimeoutTests)
 
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Types
 
-import Data.ByteString.Char8 as DBSC8
+import Data.ByteString.Char8             as DBSC8
 
 import Test.Tasty
 import Test.Tasty.HUnit

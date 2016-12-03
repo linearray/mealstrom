@@ -6,6 +6,14 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
+{-|
+Module      : Timeout
+Description : Test that recovery actually uses a timeout
+Copyright   : (c) Max Amanshauser, 2016
+License     : MIT
+Maintainer  : max@lambdalifting.org
+-}
+
 module Timeout(runTimeoutTests) where
 
 import Test.Tasty

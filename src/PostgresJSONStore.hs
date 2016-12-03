@@ -2,39 +2,45 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE RankNTypes #-}
 
--- |This module is the main backing for FSMs. Instances are stored in a table
--- with the name passed as storeName when creating the PostgresJSONStore. WALs use
--- the same name with "Wal" appended.
+{-|
+Module      : PostgresJSONStore
+Description : Main backend for FSMs and WALs.
+Copyright   : (c) Max Amanshauser, 2016
+License     : MIT
+Maintainer  : max@lambdalifting.org
+
+This module is the main backend for FSMs. Instances are stored in a table
+with the name passed as storeName when creating the PostgresJSONStore. WALs use
+the same name with "Wal" appended.
+-}
+
 module PostgresJSONStore(
     PostgresJSONStore,
     mkStore
 ) where
 
 
-import           Control.Monad (liftM, void)
-import           Database.PostgreSQL.Simple as PGS
---import           Database.PostgreSQL.Simple.FromField
+import           Control.Monad                               (liftM, void)
+import           Database.PostgreSQL.Simple                as PGS
 import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.ToField
 import           Database.PostgreSQL.Simple.Transaction
 import           Database.PostgreSQL.Simple.Types
 import           Data.Aeson
-import qualified Data.ByteString.Char8 as DBSC8
-import           Data.Int (Int64)
-import           Data.Maybe (maybe, listToMaybe)
+import qualified Data.ByteString.Char8                     as DBSC8
+import           Data.Int                                    (Int64)
+import           Data.Maybe                                  (maybe, listToMaybe)
 import           Data.Pool
 import           Data.Text
 import           Data.Time
-import           Data.Typeable hiding (Proxy)
+import           Data.Typeable                        hiding (Proxy)
 import           GHC.Generics
-import           Database.PostgreSQL.Simple.FromField (FromField (fromField) , typeOid, returnError, fromJSONField, Conversion)
+import           Database.PostgreSQL.Simple.FromField (FromField (fromField), fromJSONField, Conversion)
 import qualified Data.ByteString.Char8 as B
 
 import FSM
@@ -59,9 +65,10 @@ instance (FSMKey k) => WALStore PostgresJSONStore k where
     walDecrement       = PostgresJSONStore.walDecrement
     walScan            = PostgresJSONStore.walScan
 
-
+-- |We create a database pool (no subpools) of 20 connections that will be closed
+-- after 10 seconds of inactivity.
 givePool :: IO Connection -> IO (Pool Connection)
-givePool creator = createPool creator close 1 (10 * 10^12) 20
+givePool creator = createPool creator close 1 10 20
 
 
 -- #########
@@ -93,6 +100,24 @@ fsmCreate st i =
 
 
 -- |Postgresql-simple exceptions will be caught by `patch` in FSMApi.hs
+-- In principle all transaction isolation levels offered by Postgres are safe
+-- here, because we do explicit locking in _getValueForUpdate.
+-- However things become more interesting when considering that you can do
+-- arbitrary queries in Actions, either using the functions in this
+-- module or otherwise.
+
+-- We use Serializable here, because it involves no extra cost in our case, and
+-- it provides safety when used in arbitrary ways in Actions.
+-- Hence,
+-- * Serializable is recommended and safe.
+-- * Repeatable Read, or in PostgreSQL's case Snapshot Isolation, does *not* protect
+--   against write skew, which means that if two Actions perform reads and based
+--   on the result update data, one of the two updates may be lost.
+-- * Read Committed means the usual caveats apply (Nonrepeatable reads, Phantom reads, Write skew…).
+--
+--   If you are not careful you may end up with wrong data or attempts to insert data
+--   with a duplicate ID resulting in an exception,…
+--   Hence, when in doubt, do not lower the isolation level.
 fsmUpdate :: forall k s e a .
              (FromJSON s, FromJSON e, FromJSON a,
               ToJSON   s, ToJSON   e, ToJSON   a,
@@ -169,30 +194,9 @@ _createFsmTable :: Connection -> Text -> IO Int64
 _createFsmTable conn name =
     PGS.execute conn "CREATE TABLE IF NOT EXISTS ? ( id text PRIMARY KEY, data jsonb NOT NULL)" (Only (Identifier name))
 
--- |A brief lesson on transaction isolation:
--- According to the SQL standard Serializable is the *only* isolation level
--- that offers protection against concurrent updates, which is something we need.
--- If performance is a problem you may want to lower the isolation level to
--- RepeatableRead, which in PostgreSQL actually is the non-standard
--- technique/isolation level Snapshot Isolation that is sufficient to
--- protect against concurrent updates.
--- In doing so you must keep two things in mind:
--- * You must still be prepared to retry transactions, when they fail due to
---   concurrent updates.
--- * Repeatable Read, or in PostgreSQL's case Snapshot Isolation, does *not* protect
---   against write skew, which means that if you read from the table in a (phase2)
---   handler, and receive an empty result, a concurrent transaction may insert a new Instance
---   so that if you later retried the read you would now receive a non-empty result.
---   If you are not careful you may end up with wrong data or attempts to insert data
---   with a duplicate ID resulting in an exception,…
---   Hence, when in doubt, do not lower the isolation level.
--- The one even lower isolation level in PostgreSQL, ReadCommitted, does not
--- protect against concurrent updates and is therefore not suitable.
-
--- HOWEVER: (disregard everything above)
--- Since it is a priority to execute effects only once, as good as we can, this changes
--- the picture. SELECT FOR UPDATE locks the rows matching the query. Concurrent transactions
--- will block and then abort, once the new value has been inserted. Since we run effects
+-- SELECT .. FOR UPDATE locks the rows matching the query. Concurrent
+-- (repeatable read and serializable) transactions will block and
+-- abort once the new value has been inserted. Since we run effects
 -- between SELECT and INSERT, this is what we want.
 -- Concurrent SELECTS (without FOR UPDATE) will be unaffected.
 _getValue :: (FromRow v) => Connection -> Text -> Text -> IO [v]

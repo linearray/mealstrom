@@ -1,11 +1,18 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+
+{-|
+Module      : FSM2FSM
+Description : An example that shows how two FSMs can exchange messages with each other.
+Copyright   : (c) Max Amanshauser, 2016
+License     : MIT
+Maintainer  : max@lambdalifting.org
+-}
 
 module FSM2FSM (runFSM2FSMTests) where
 
@@ -14,8 +21,8 @@ import FSM
 import FSMApi
 import FSMStore
 import FSMTable
-import PostgresJSONStore as PGJSON
-import MemoryStore       as MemStore
+import PostgresJSONStore        as PGJSON
+import MemoryStore              as MemStore
 
 import Control.Concurrent.QSem
 import Control.Monad (void)
@@ -28,7 +35,6 @@ import Data.UUID
 import Data.UUID.V4
 import Debug.Trace
 import GHC.Generics
-
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -66,7 +72,7 @@ paymentEffects :: (FSMStore st BankAccountKey BankAccountState BankAccountEvent 
                ->  IO Bool
 paymentEffects qsem h (Msg d (PaymentUpdateAccount acc amount)) = do
 
-    -- send message to bankaccount FSM
+    -- send message to bankaccount FSM using the same msgId!
     upsert h acc (BankAccountBalance 0) [Msg d (BankAccountDeposit amount)]
     signalQSem qsem
     return True

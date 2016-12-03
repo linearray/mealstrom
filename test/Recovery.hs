@@ -1,11 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
+{-|
+Module      : Recovery
+Description : Test that recovery works
+Copyright   : (c) Max Amanshauser, 2016
+License     : MIT
+Maintainer  : max@lambdalifting.org
+-}
 module Recovery(runRecoveryTests) where
 
 import Test.Tasty

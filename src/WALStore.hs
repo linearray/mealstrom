@@ -6,7 +6,6 @@ Description : Store WALEntries
 Copyright   : (c) Max Amanshauser, 2016
 License     : MIT
 Maintainer  : max@lambdalifting.org
-Stability   : experimental
 
 A WALStore is anything being able to store WALEntries.
 WALEntries indicate how often a recovery process has been started for
@@ -29,3 +28,9 @@ data WALEntry k = WALEntry {
     walTime  :: UTCTime,
     walCount :: Int
 } deriving (Show,Eq)
+
+openTxn :: WALStore st k => st -> k -> IO ()
+openTxn = walUpsertIncrement
+
+closeTxn :: WALStore st k => st -> k -> IO ()
+closeTxn = walDecrement

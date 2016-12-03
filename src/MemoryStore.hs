@@ -1,14 +1,16 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 
-
--- |STM container for keeping mappings UUID -> Instance s e a
+{-|
+Module      : MemoryStore
+Description : A memory-only storage backend, using STM.
+Copyright   : (c) Max Amanshauser, 2016
+License     : MIT
+Maintainer  : max@lambdalifting.org
+-}
 module MemoryStore (
     MemoryStore,
     mkStore,
@@ -28,10 +30,9 @@ import qualified ListT
 import           STMContainers.Map as Map
 import           System.IO.Unsafe
 
-import FSM
-import FSMStore
-import WALStore
-
+import           FSM
+import           FSMStore
+import           WALStore
 
 instance (MealyInstance k s e a) => FSMStore (MemoryStore k s e a) k s e a where
     fsmRead st k _p = do
@@ -53,12 +54,12 @@ data MemoryStore k s e a where
         memstoreWals    :: Map k (UTCTime,Int)
     } -> MemoryStore k s e a
 
-_fsmRead :: forall k s e a . MemoryStore k s e a -> k -> STM (Maybe (Instance k s e a))
+_fsmRead :: MemoryStore k s e a -> k -> STM (Maybe (Instance k s e a))
 _fsmRead mst@MemoryStore{..} k = Map.lookup k memstoreBacking >>= \case
     Just a -> return $ Just a
     _      -> return Nothing
 
-_fsmCreate :: forall k s e a . MemoryStore k s e a -> Instance k s e a -> STM ()
+_fsmCreate :: MemoryStore k s e a -> Instance k s e a -> STM ()
 _fsmCreate mst@MemoryStore{..} ins = do
     t <- newTMVar ()
     Map.insert t   (key ins) memstoreLocks

@@ -3,7 +3,14 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
+
+{-|
+Module      : BasicFSM
+Description : A simple example.
+Copyright   : (c) Max Amanshauser, 2016
+License     : MIT
+Maintainer  : max@lambdalifting.org
+-}
 
 module BasicFSM (runBasicTests) where
 
@@ -38,6 +45,8 @@ import MemoryStore                as MemStore
 -- ####################
 -- # Connection Example
 -- ####################
+
+-- This is a contrived example of how to use a custom Key type, instead of the recommended Text and UUID.
 newtype ConnectionKey = ConnectionKey (Int,Int) deriving (Show,Eq,Generic,Hashable)
 
 instance FSMKey ConnectionKey where
@@ -70,8 +79,8 @@ connTransition (s,e) =
         (Open, Reset) -> (Open,  [PrintStatusClosed, PrintStatusOpened])
 
 runBasicTests c = testGroup "BasicFSM" [
-    testCase "BasicPG" (runTest (PGJSON.mkStore c))
-    --testCase "BasicMem0" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore ConnectionKey ConnectionState ConnectionEvent ConnectionAction)))
+    testCase "BasicPG" (runTest (PGJSON.mkStore c)),
+    testCase "BasicMem0" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore ConnectionKey ConnectionState ConnectionEvent ConnectionAction)))
     ]
 
 runTest :: (FSMStore st ConnectionKey ConnectionState ConnectionEvent ConnectionAction,
@@ -81,7 +90,7 @@ runTest c = do
     sync     <- newEmptyMVar
     let t     = FSMTable connTransition (connEffects sync)
     let myFSM = FSMHandle st st t 90 3
-    let firstId = ConnectionKey (1231231,21)   -- This could be a socket or something
+    let firstId = ConnectionKey (1231231,21)   -- This represents a socket or something
 
     post myFSM firstId New
     Just fsmState <- get myFSM firstId

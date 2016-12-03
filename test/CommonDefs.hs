@@ -1,6 +1,10 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RankNTypes #-}
-
+{-|
+Module      : CommonDefs
+Description : Some things that sometimes come in handy.
+Copyright   : (c) Max Amanshauser, 2016
+License     : MIT
+Maintainer  : max@lambdalifting.org
+-}
 module CommonDefs where
 
 import Data.Aeson
@@ -16,18 +20,15 @@ import FSMStore
 
 cutOff = 2
 
--- don't ever use this in production :^)
-
-
-busyWaitForState ::
-    forall st wal k s e a . (FromJSON s, FromJSON e, FromJSON a,
-                             Typeable s, Typeable e, Typeable a,
-                             Eq s, Eq e, Eq a, MealyInstance k s e a, FSMStore st k s e a)
-                    => FSMHandle st wal k s e a
-                    -> k
-                    -> s
-                    -> UTCTime
-                    -> IO Bool
+-- |Don't ever use this in production :^)
+busyWaitForState :: (FromJSON s, FromJSON e, FromJSON a,
+                     Typeable s, Typeable e, Typeable a,
+                     Eq s, Eq e, Eq a, MealyInstance k s e a, FSMStore st k s e a)
+                 => FSMHandle st wal k s e a
+                 -> k
+                 -> s
+                 -> UTCTime
+                 -> IO Bool
 busyWaitForState fsm i s t = do
     ct <- getCurrentTime
 
