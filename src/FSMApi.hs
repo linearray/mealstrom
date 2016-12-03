@@ -24,19 +24,11 @@ import FSM
 import FSMEngine
 import FSMStore
 import FSMTable
-import MemoryStore
 import WALStore
 
 import           Control.Concurrent
-import           Control.Monad          (liftM,forM,void)
-import           Data.Aeson
-import           Data.Foldable          (forM_)
-import           Data.Maybe
+import           Control.Monad          (void)
 import qualified Data.Text           as  Text
-import           Data.Text              (Text)
-import           Data.Time
-import           Data.Typeable   hiding (Proxy)
-import           GHC.Generics
 import           System.IO
 import           System.Timeout
 
@@ -53,7 +45,7 @@ data FSMHandle st wal k s e a where
 
 
 get :: forall st wal k s e a . FSMStore st k s e a => FSMHandle st wal k s e a -> k -> IO(Maybe s)
-get h@FSMHandle{..} k = fsmRead fsmStore k (Proxy :: Proxy k s e a)
+get FSMHandle{..} k = fsmRead fsmStore k (Proxy :: Proxy k s e a)
 
 
 -- |Idempotent because of usage of caller-generated UUIDs
@@ -62,7 +54,7 @@ post :: forall st wal k s e a . FSMStore st k s e a =>
         FSMHandle st wal k s e a                                 ->
         k                                                        ->
         s                                                        -> IO ()
-post h@FSMHandle{..} k s0 =
+post FSMHandle{..} k s0 =
     fsmCreate fsmStore (mkInstance k s0 [] :: Instance k s e a)
 
 
@@ -116,5 +108,5 @@ upsert :: forall st wal k s e a . MealyInstance k s e a => FSMStore st k s e a =
 upsert h k s es = do
     ms <- get h k
     maybe (post h k s >> void (patch h k es))
-          (\s -> void $ patch h k es)
+          (\_s -> void $ patch h k es)
           ms

@@ -8,7 +8,6 @@ Maintainer  : max@lambdalifting.org
 
 module FSMTable where
 
-import Data.List (foldl')
 import FSM
 
 type Transitions s e a = (s,e) -> (s,[a])

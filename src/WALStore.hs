@@ -14,9 +14,6 @@ an instance.
 module WALStore where
 
 import Data.Time.Clock
-import Data.UUID
-
-import FSM
 
 class WALStore st k where
     walUpsertIncrement :: st -> k -> IO ()

@@ -17,18 +17,12 @@ module MemoryStore (
     printWal
 ) where
 
-import           Control.Concurrent.Async
 import           Control.Concurrent.STM
 import           Control.Exception
-import           Control.Monad
 import           Data.Text
 import           Data.Time
-import           Data.UUID
-import           Data.UUID.V4
-import           Debug.Trace
 import qualified ListT
 import           STMContainers.Map as Map
-import           System.IO.Unsafe
 
 import           FSM
 import           FSMStore
@@ -55,12 +49,12 @@ data MemoryStore k s e a where
     } -> MemoryStore k s e a
 
 _fsmRead :: MemoryStore k s e a -> k -> STM (Maybe (Instance k s e a))
-_fsmRead mst@MemoryStore{..} k = Map.lookup k memstoreBacking >>= \case
+_fsmRead MemoryStore{..} k = Map.lookup k memstoreBacking >>= \case
     Just a -> return $ Just a
     _      -> return Nothing
 
 _fsmCreate :: MemoryStore k s e a -> Instance k s e a -> STM ()
-_fsmCreate mst@MemoryStore{..} ins = do
+_fsmCreate MemoryStore{..} ins = do
     t <- newTMVar ()
     Map.insert t   (key ins) memstoreLocks
     Map.insert ins (key ins) memstoreBacking
@@ -69,7 +63,7 @@ _fsmCreate mst@MemoryStore{..} ins = do
 -- having to use IO while performing STM operations, which is not possible.
 -- Using the lock we can rest assured no concurrent update operation can progress.
 _fsmUpdate :: MemoryStore k s e a -> k -> MachineTransformer s e a -> IO OutboxStatus
-_fsmUpdate mst@MemoryStore{..} k t =
+_fsmUpdate MemoryStore{..} k t =
     let
         m  = memstoreBacking
         ls = memstoreLocks
@@ -93,22 +87,22 @@ _fsmUpdate mst@MemoryStore{..} k t =
                   lock
 
 walUpsertIncrement :: MemoryStore k s e a -> k -> IO ()
-walUpsertIncrement mst@MemoryStore{..} k =
+walUpsertIncrement MemoryStore{..} k =
     getCurrentTime >>= \t -> atomically $
         Map.lookup k memstoreWals >>= \res ->
             maybe (Map.insert (t,1) k memstoreWals)
-                  (\(t,w) -> Map.insert (t,w+1) k memstoreWals)
+                  (\(_oldt,w) -> Map.insert (t,w+1) k memstoreWals)
                   res
 
 walDecrement :: MemoryStore k s e a -> k -> STM ()
-walDecrement mst@MemoryStore{..} k =
+walDecrement MemoryStore{..} k =
     Map.lookup k memstoreWals >>= \res ->
         maybe (error "trying to recover non-existing entry")
               (\(t,w) -> Map.insert (t,w-1) k memstoreWals)
               res
 
 walScan :: MemoryStore k s e a -> Int -> IO [WALEntry k]
-walScan mst@MemoryStore{..} cutoff =
+walScan MemoryStore{..} cutoff =
     getCurrentTime >>= \t -> atomically $
         let xx = addUTCTime (negate (fromInteger (toInteger cutoff) :: NominalDiffTime)) t in
 
@@ -118,7 +112,7 @@ walScan mst@MemoryStore{..} cutoff =
 
 
 printWal :: MemoryStore k s e a -> k -> IO ()
-printWal mst@MemoryStore{..} k =
+printWal MemoryStore{..} k =
     atomically (Map.lookup k memstoreWals) >>= \res ->
         maybe (putStrLn "NO WAL")
               print

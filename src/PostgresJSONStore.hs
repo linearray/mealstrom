@@ -25,7 +25,7 @@ module PostgresJSONStore(
 ) where
 
 
-import           Control.Monad                               (liftM, void)
+import           Control.Monad                               (void)
 import           Database.PostgreSQL.Simple                as PGS
 import           Database.PostgreSQL.Simple.FromRow
 import           Database.PostgreSQL.Simple.ToField
@@ -34,14 +34,13 @@ import           Database.PostgreSQL.Simple.Types
 import           Data.Aeson
 import qualified Data.ByteString.Char8                     as DBSC8
 import           Data.Int                                    (Int64)
-import           Data.Maybe                                  (maybe, listToMaybe)
+import           Data.Maybe                                  (listToMaybe)
 import           Data.Pool
 import           Data.Text
 import           Data.Time
 import           Data.Typeable                        hiding (Proxy)
 import           GHC.Generics
 import           Database.PostgreSQL.Simple.FromField (FromField (fromField), fromJSONField, Conversion)
-import qualified Data.ByteString.Char8 as B
 
 import FSM
 import FSMStore
@@ -149,8 +148,11 @@ _createWalTable conn name =
     PGS.execute conn "CREATE TABLE IF NOT EXISTS ? ( id TEXT PRIMARY KEY, date timestamptz NOT NULL, count int NOT NULL )" (Only (Identifier name))
 
 -- |Updates a WALEntry if it exists, inserts a new WALEntry if is is missing.
+walUpsertIncrement :: (FSMKey k) => PostgresJSONStore -> k -> IO ()
 walUpsertIncrement st i =
     _walExecute st i _walIncrement
+
+walDecrement :: (FSMKey k) => PostgresJSONStore -> k -> IO ()
 walDecrement st i =
     _walExecute st i _walDecrement
 
@@ -186,8 +188,8 @@ mkStore connStr name =
         connBS = DBSC8.pack connStr
     in do
         pool <- givePool (PGS.connectPostgreSQL connBS)
-        withResource pool $ flip _createFsmTable name
-        withResource pool $ flip _createWalTable (append name "Wal")
+        _    <- withResource pool $ flip _createFsmTable name
+        _    <- withResource pool $ flip _createWalTable (append name "Wal")
         return $ PostgresJSONStore pool name
 
 _createFsmTable :: Connection -> Text -> IO Int64

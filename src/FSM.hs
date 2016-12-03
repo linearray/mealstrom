@@ -16,19 +16,17 @@ finite state machines, keeping a memory and state transitions.
 
 module FSM where
 
-import           Control.Monad     (liftM, ap)
 import           Data.Aeson
 import           Data.Foldable     (asum)
 import           Data.Hashable     (Hashable)
 import           Data.Maybe        (fromJust, fromMaybe)
 import           Data.Text         (Text)
 import           Data.Time.Clock
-import           Data.Typeable     (Typeable, typeOf)
+import           Data.Typeable     (Typeable)
 import qualified Data.UUID as       UUID
 import           Data.UUID         (UUID)
 import           Data.UUID.V4
 import           GHC.Generics
-import           TextShow hiding   (fromText,toText)
 
 type MachineTransformer s e a = Machine s e a -> IO (Machine s e a)
 data OutboxStatus             = NotFound | Pending | Done deriving (Eq, Show)
@@ -45,13 +43,14 @@ class (FSMKey k) => MealyInstance k s e a
 -- |A change in a FSM is either a (Step Timestamp oldState event newState Actions)
 -- or an increase in a counter.
 data Change s e a = Step UTCTime s e s [a] | Count Int deriving (Show)
-_inc (Count i)    = Count (i+1)
 
 -- |Steps are equal to each other when they originated in the same state
 -- received the same event and ended up in the same state
 instance (Eq s, Eq e) => Eq (Change s e a) where
-    (==) (Count a) (Count b) = a == b
+    (==) (Count a)             (Count b)             = a == b
     (==) (Step _ os1 e1 ns1 _) (Step _ os2 e2 ns2 _) = (os1 == os2) && (e1 == e2) && (ns1 == ns2)
+    (==) (Count _)              Step{}               = False
+    (==)  Step{}               (Count _)             = False
 
 data Instance k s e a = Instance {
     key     :: k,
@@ -101,7 +100,7 @@ histAppend :: (Eq s, Eq e) => Change s e a -> [Change s e a] -> [Change s e a]
 histAppend s1 all@(Count i:s2:rest)
     | s1 == s2 = Count (i+1):s2:rest
     | otherwise = s1 : all
-histAppend s1 all@(s2:rest)
+histAppend s1 all@(s2:_rest)
     | s1 == s2 = Count 1 : all
     | otherwise = s1 : all
 histAppend s ss = s:ss
