@@ -1,6 +1,6 @@
 machine:
   ghc:
-    version: 7.10.2
+    version: 8.0.1
 
 database:
   override:
