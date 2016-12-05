@@ -1,33 +1,31 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RankNTypes #-}
-
+{-|
+Module      : CommonDefs
+Description : Some things that sometimes come in handy.
+Copyright   : (c) Max Amanshauser, 2016
+License     : MIT
+Maintainer  : max@lambdalifting.org
+-}
 module CommonDefs where
 
 import Data.Aeson
 import Data.Time
 import Data.Typeable
-import Data.UUID
-import Debug.Trace
-import GHC.Generics
-import FSM
-import FSMApi
-import FSMStore
 
+import Mealstrom
+import Mealstrom.FSMStore
 
+cutOff :: NominalDiffTime
 cutOff = 2
 
--- don't ever use this in production :^)
-
-
-busyWaitForState ::
-    forall st wal s e a . (FromJSON s, FromJSON e, FromJSON a,
-                           Typeable s, Typeable e, Typeable a,
-                           Eq s, Eq e, Eq a, FSMStore st (Instance s e a))
-                    => FSMHandle st wal s e a
-                    -> UUID
-                    -> s
-                    -> UTCTime
-                    -> IO Bool
+-- |Don't ever use this in production :^)
+busyWaitForState :: (FromJSON s, FromJSON e, FromJSON a,
+                     Typeable s, Typeable e, Typeable a,
+                     Eq s, Eq e, Eq a, MealyInstance k s e a, FSMStore st k s e a)
+                 => FSMHandle st wal k s e a
+                 -> k
+                 -> s
+                 -> UTCTime
+                 -> IO Bool
 busyWaitForState fsm i s t = do
     ct <- getCurrentTime
 

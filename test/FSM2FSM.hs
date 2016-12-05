@@ -1,34 +1,35 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+
+{-|
+Module      : FSM2FSM
+Description : An example that shows how two FSMs can exchange messages with each other.
+Copyright   : (c) Max Amanshauser, 2016
+License     : MIT
+Maintainer  : max@lambdalifting.org
+-}
 
 module FSM2FSM (runFSM2FSMTests) where
 
-import CommonDefs
-import FSM
-import FSMApi
-import FSMStore
-import FSMTable
-import PostgresJSONStore as PGJSON
-import MemoryStore       as MemStore
-
 import Control.Concurrent.QSem
-import Control.Monad (void)
 import Data.Aeson
-import Data.Maybe
 import Data.Text
-import Data.Time
 import Data.Typeable
 import Data.UUID
 import Data.UUID.V4
-import Debug.Trace
 import GHC.Generics
-
 import Test.Tasty
 import Test.Tasty.HUnit
+
+import Mealstrom
+import Mealstrom.FSMStore
+import Mealstrom.PostgresJSONStore as PGJSON
+import Mealstrom.MemoryStore       as MemStore
 
 -- #################
 -- # Payment Example
@@ -37,6 +38,7 @@ import Test.Tasty.HUnit
 -- #######
 -- # FSM 1
 -- #######
+type PaymentKey   = UUID
 data PaymentState = PaymentPending Int | PaymentPaid | PaymentAborted
     deriving (Eq,Show,Typeable,Generic,ToJSON,FromJSON)
 
@@ -50,23 +52,30 @@ data PaymentAction = PaymentUpdateAccount UUID Int
 
 paymentTransition :: (PaymentState, PaymentEvent) -> (PaymentState,[PaymentAction])
 paymentTransition (s,e) = case (s,e) of
-        (PaymentPending o, AbortPayment)         -> (PaymentAborted,[])
-        (PaymentPending o, ReceivedPayment ba i) -> if i >= o
-                                                    then (PaymentPaid, [PaymentUpdateAccount ba i])
-                                                    else (PaymentPending (o-i),[])
-        (PaymentAborted,   _)                    -> (PaymentAborted, [])
+        (PaymentPending _o, AbortPayment)         -> (PaymentAborted,[])
+        (PaymentPending o,  ReceivedPayment ba i) -> if i >= o
+                                                     then (PaymentPaid, [PaymentUpdateAccount ba i])
+                                                     else (PaymentPending (o-i),[])
+        (PaymentAborted,   _)                     -> (PaymentAborted, [])
 
-paymentEffects :: (FSMStore st (Instance BankAccountState BankAccountEvent BankAccountAction)) => QSem -> FSMHandle st wal BankAccountState BankAccountEvent BankAccountAction -> Msg PaymentAction -> IO Bool
+paymentEffects :: (FSMStore st BankAccountKey BankAccountState BankAccountEvent BankAccountAction)
+               =>  QSem
+               ->  FSMHandle st wal BankAccountKey BankAccountState BankAccountEvent BankAccountAction
+               ->  Msg PaymentAction
+               ->  IO Bool
 paymentEffects qsem h (Msg d (PaymentUpdateAccount acc amount)) = do
 
-    -- send message to bankaccount FSM
+    -- send message to bankaccount FSM using the same msgId!
     upsert h acc (BankAccountBalance 0) [Msg d (BankAccountDeposit amount)]
     signalQSem qsem
     return True
 
+instance MealyInstance PaymentKey PaymentState PaymentEvent PaymentAction
+
 -- #######
 -- # FSM 2
 -- #######
+type BankAccountKey   = UUID
 data BankAccountState = BankAccountBalance Int
     deriving (Eq,Show,Typeable,Generic,ToJSON,FromJSON)
 
@@ -90,15 +99,17 @@ bankAccountTransition =
 bankAccountEffects :: QSem -> Msg BankAccountAction -> IO Bool
 bankAccountEffects qsem _ = signalQSem qsem >> return True
 
+instance MealyInstance BankAccountKey BankAccountState BankAccountEvent BankAccountAction
 
 -- #######
 -- # TEST
 -- #######
+runFSM2FSMTests :: String -> TestTree
 runFSM2FSMTests c =
     testGroup "FSM2FSM" [
         testCase "FSM2FSMPG" (runTest (PGJSON.mkStore c)(PGJSON.mkStore c)),
-        testCase "FSM2FSMMem" (runTest (MemStore.mkStore :: Text -> IO(MemoryStore BankAccountState BankAccountEvent BankAccountAction))
-                                       (MemStore.mkStore :: Text -> IO(MemoryStore PaymentState     PaymentEvent     PaymentAction)))
+        testCase "FSM2FSMMem" (runTest (MemStore.mkStore :: Text -> IO(MemoryStore BankAccountKey BankAccountState BankAccountEvent BankAccountAction))
+                                       (MemStore.mkStore :: Text -> IO(MemoryStore PaymentKey     PaymentState     PaymentEvent     PaymentAction)))
     ]
   where
     runTest c1 c2 = do
@@ -107,20 +118,20 @@ runFSM2FSMTests c =
         st1           <- c1 "FSM2FSMTestBank"
 
         let t1         = FSMTable bankAccountTransition (bankAccountEffects sync)
-        let bankFsm    = FSMHandle "BankFSM" t1 st1 st1 900 3
+        let bankFsm    = FSMHandle st1 st1 t1 900 3
 
         -- Using the first handle we can instantiate the second one.
         st2           <- c2 "FSM2FSMTestPayments"
 
         let t2         = FSMTable paymentTransition (paymentEffects sync bankFsm)
-        let paymentFsm = FSMHandle "PaymentFSM" t2 st2 st2 900 3
+        let paymentFsm = FSMHandle st2 st2 t2 900 3
 
         paymentId     <- nextRandom
         bankAccount   <- nextRandom
 
         msg1          <- mkMsg $ ReceivedPayment bankAccount 1000
         post  paymentFsm paymentId (PaymentPending 1000)
-        patch paymentFsm paymentId [msg1]
+        _ <- patch paymentFsm paymentId [msg1]
 
         waitQSem sync
         waitQSem sync

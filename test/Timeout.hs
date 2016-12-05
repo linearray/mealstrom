@@ -3,45 +3,47 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
-
+{-|
+Module      : Timeout
+Description : Make sure that recovery actually uses a timeout
+Copyright   : (c) Max Amanshauser, 2016
+License     : MIT
+Maintainer  : max@lambdalifting.org
+-}
 
 module Timeout(runTimeoutTests) where
 
 import Test.Tasty
 import Test.Tasty.HUnit
 
---import CommonDefs
-
 import Control.Concurrent
-import Control.Concurrent.MVar
-import Control.Monad
 import Data.Typeable
 import Data.Aeson
 import GHC.Generics
-
-import FSM
-import FSMApi
-import FSMStore
-import FSMTable
-import PostgresJSONStore as PGJSON
-import MemoryStore       as MemStore
 import Data.Text
-import Data.Time.Clock
 import Data.IORef
 import Data.UUID
 import Data.UUID.V4
-import Debug.Trace
 
+import Mealstrom
+import Mealstrom.PostgresJSONStore as PGJSON
+import Mealstrom.MemoryStore       as MemStore
+
+type TimeoutKey    = UUID
 data TimeoutState  = TimeoutState  deriving (Eq,Show,Generic,Typeable,ToJSON,FromJSON)
 data TimeoutEvent  = TimeoutEvent  deriving (Eq,Show,Generic,Typeable,ToJSON,FromJSON)
 data TimeoutAction = TimeoutAction deriving (Eq,Show,Generic,Typeable,ToJSON,FromJSON)
+
+instance MealyInstance TimeoutKey TimeoutState TimeoutEvent TimeoutAction
 
 timeoutTransition :: (TimeoutState,TimeoutEvent) -> (TimeoutState,[TimeoutAction])
 timeoutTransition (TimeoutState,TimeoutEvent) = (TimeoutState,[TimeoutAction])
 
 timeoutEffects :: IORef Bool -> MVar () -> Msg TimeoutAction -> IO Bool
-timeoutEffects b sync a = do
+timeoutEffects b sync _a = do
     bb <- readIORef b
 
     if   bb
@@ -50,10 +52,10 @@ timeoutEffects b sync a = do
 
     return True
 
-
+runTimeoutTests :: String -> TestTree
 runTimeoutTests c = testGroup "Timeout" [
-    testCase "TimeoutPG" (runTest $ PGJSON.mkStore c)
-    --testCase "TimeoutMem" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore TimeoutState TimeoutEvent TimeoutAction)))
+    testCase "TimeoutPG" (runTest $ PGJSON.mkStore c),
+    testCase "TimeoutMem" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore TimeoutKey TimeoutState TimeoutEvent TimeoutAction)))
     ]
 
 runTest c = do
@@ -63,7 +65,7 @@ runTest c = do
     sync   <- newEmptyMVar
 
     let t   = FSMTable timeoutTransition (timeoutEffects b sync)
-    let fsm = FSMHandle "TimeoutFSM" t st st 1 2    -- timeout of 1 second and we only try once
+    let fsm = FSMHandle st st t 1 2    -- timeout of 1 second and we only try once
 
     i      <- nextRandom
 
