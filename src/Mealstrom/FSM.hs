@@ -4,7 +4,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 {-|
-Module      : FSM
+Module      : Mealstrom.FSM
 Description : Finite State Machine Definitions
 Copyright   : (c) Max Amanshauser, 2016
 License     : MIT
@@ -14,7 +14,7 @@ These defintions are concerned with the basic functions of
 finite state machines, keeping a memory and state transitions.
 -}
 
-module FSM where
+module Mealstrom.FSM where
 
 import           Data.Aeson
 import           Data.Foldable     (asum)

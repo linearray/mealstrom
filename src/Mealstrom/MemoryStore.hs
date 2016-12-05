@@ -5,13 +5,13 @@
 {-# LANGUAGE RecordWildCards #-}
 
 {-|
-Module      : MemoryStore
+Module      : Mealstrom.MemoryStore
 Description : A memory-only storage backend, using STM.
 Copyright   : (c) Max Amanshauser, 2016
 License     : MIT
 Maintainer  : max@lambdalifting.org
 -}
-module MemoryStore (
+module Mealstrom.MemoryStore (
     MemoryStore,
     mkStore,
     printWal
@@ -24,9 +24,9 @@ import           Data.Time
 import qualified ListT
 import           STMContainers.Map as Map
 
-import           FSM
-import           FSMStore
-import           WALStore
+import           Mealstrom.FSM
+import           Mealstrom.FSMStore
+import           Mealstrom.WALStore
 
 instance (MealyInstance k s e a) => FSMStore (MemoryStore k s e a) k s e a where
     fsmRead st k _p = do
@@ -36,9 +36,9 @@ instance (MealyInstance k s e a) => FSMStore (MemoryStore k s e a) k s e a where
     fsmUpdate st k t = _fsmUpdate st k t
 
 instance WALStore (MemoryStore k s e a) k where
-    walUpsertIncrement      =              MemoryStore.walUpsertIncrement
-    walDecrement       st k = atomically $ MemoryStore.walDecrement st k
-    walScan                 =              MemoryStore.walScan
+    walUpsertIncrement      =              Mealstrom.MemoryStore.walUpsertIncrement
+    walDecrement       st k = atomically $ Mealstrom.MemoryStore.walDecrement st k
+    walScan                 =              Mealstrom.MemoryStore.walScan
 
 data MemoryStore k s e a where
     MemoryStore :: (MealyInstance k s e a) => {

@@ -16,27 +16,22 @@ Maintainer  : max@lambdalifting.org
 
 module FSM2FSM (runFSM2FSMTests) where
 
-import CommonDefs
-import FSM
-import FSMApi
-import FSMStore
-import FSMTable
-import PostgresJSONStore        as PGJSON
-import MemoryStore              as MemStore
-
 import Control.Concurrent.QSem
-import Control.Monad (void)
 import Data.Aeson
-import Data.Maybe
 import Data.Text
-import Data.Time
 import Data.Typeable
 import Data.UUID
 import Data.UUID.V4
-import Debug.Trace
 import GHC.Generics
 import Test.Tasty
 import Test.Tasty.HUnit
+
+import Mealstrom.FSM
+import Mealstrom.FSMApi
+import Mealstrom.FSMStore
+import Mealstrom.FSMTable
+import Mealstrom.PostgresJSONStore as PGJSON
+import Mealstrom.MemoryStore       as MemStore
 
 -- #################
 -- # Payment Example
@@ -59,11 +54,11 @@ data PaymentAction = PaymentUpdateAccount UUID Int
 
 paymentTransition :: (PaymentState, PaymentEvent) -> (PaymentState,[PaymentAction])
 paymentTransition (s,e) = case (s,e) of
-        (PaymentPending o, AbortPayment)         -> (PaymentAborted,[])
-        (PaymentPending o, ReceivedPayment ba i) -> if i >= o
-                                                    then (PaymentPaid, [PaymentUpdateAccount ba i])
-                                                    else (PaymentPending (o-i),[])
-        (PaymentAborted,   _)                    -> (PaymentAborted, [])
+        (PaymentPending _o, AbortPayment)         -> (PaymentAborted,[])
+        (PaymentPending o,  ReceivedPayment ba i) -> if i >= o
+                                                     then (PaymentPaid, [PaymentUpdateAccount ba i])
+                                                     else (PaymentPending (o-i),[])
+        (PaymentAborted,   _)                     -> (PaymentAborted, [])
 
 paymentEffects :: (FSMStore st BankAccountKey BankAccountState BankAccountEvent BankAccountAction)
                =>  QSem
@@ -111,6 +106,7 @@ instance MealyInstance BankAccountKey BankAccountState BankAccountEvent BankAcco
 -- #######
 -- # TEST
 -- #######
+runFSM2FSMTests :: String -> TestTree
 runFSM2FSMTests c =
     testGroup "FSM2FSM" [
         testCase "FSM2FSMPG" (runTest (PGJSON.mkStore c)(PGJSON.mkStore c)),
@@ -137,7 +133,7 @@ runFSM2FSMTests c =
 
         msg1          <- mkMsg $ ReceivedPayment bankAccount 1000
         post  paymentFsm paymentId (PaymentPending 1000)
-        patch paymentFsm paymentId [msg1]
+        _ <- patch paymentFsm paymentId [msg1]
 
         waitQSem sync
         waitQSem sync

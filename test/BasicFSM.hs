@@ -17,29 +17,20 @@ module BasicFSM (runBasicTests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import CommonDefs
-
 import Control.Concurrent
-import Control.Concurrent.STM
-import Control.Concurrent.MVar
 import Data.Aeson
 import Data.Hashable
-import Data.Text                  as Text
-import Data.Text (Text)
-import Data.Time.Clock
+import Data.Text                   as Text
 import Data.Typeable
-import Data.UUID
-import Data.UUID.V4
-import Debug.Trace
 import GHC.Generics
 
-import FSM
-import FSMApi
-import FSMStore
-import FSMTable
-import WALStore
-import PostgresJSONStore          as PGJSON
-import MemoryStore                as MemStore
+import Mealstrom.FSM
+import Mealstrom.FSMApi
+import Mealstrom.FSMStore
+import Mealstrom.FSMTable
+import Mealstrom.WALStore
+import Mealstrom.PostgresJSONStore as PGJSON
+import Mealstrom.MemoryStore       as MemStore
 
 
 -- ####################
@@ -67,7 +58,7 @@ data ConnectionAction = PrintStatusOpened | PrintStatusClosed
 instance MealyInstance ConnectionKey ConnectionState ConnectionEvent ConnectionAction
 
 connEffects :: MVar () -> Msg ConnectionAction -> IO Bool
-connEffects mvar (Msg i c)
+connEffects mvar (Msg _i c)
     | c == PrintStatusOpened = putStrLn "OUTPUT: Connection opened" >> putMVar mvar () >> return True
     | c == PrintStatusClosed = putStrLn "OUTPUT: Connection closed" >> putMVar mvar () >> return True
 
@@ -78,6 +69,7 @@ connTransition (s,e) =
         (Open, Close) -> (Closed,[PrintStatusClosed])
         (Open, Reset) -> (Open,  [PrintStatusClosed, PrintStatusOpened])
 
+runBasicTests :: String -> TestTree
 runBasicTests c = testGroup "BasicFSM" [
     testCase "BasicPG" (runTest (PGJSON.mkStore c)),
     testCase "BasicMem0" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore ConnectionKey ConnectionState ConnectionEvent ConnectionAction)))
@@ -93,19 +85,19 @@ runTest c = do
     let firstId = ConnectionKey (1231231,21)   -- This represents a socket or something
 
     post myFSM firstId New
-    Just fsmState <- get myFSM firstId
-    assert $ fsmState == New
+    Just fsmState1 <- get myFSM firstId
+    assert $ fsmState1 == New
 
     msg1 <- mkMsgs [Create]
-    patch myFSM firstId msg1
+    _    <- patch myFSM firstId msg1
 
     takeMVar sync
-    Just fsmState <- get myFSM firstId
-    assert $ fsmState == Open
+    Just fsmState2 <- get myFSM firstId
+    assert $ fsmState2 == Open
 
     msg2 <- mkMsgs [Close]
-    patch myFSM firstId msg2
+    _    <- patch myFSM firstId msg2
 
     takeMVar sync
-    Just fsmState <- get myFSM firstId
-    assert $ fsmState == Closed
+    Just fsmState3 <- get myFSM firstId
+    assert $ fsmState3 == Closed

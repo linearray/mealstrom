@@ -6,9 +6,9 @@ License     : MIT
 Maintainer  : max@lambdalifting.org
 -}
 
-module FSMTable where
+module Mealstrom.FSMTable where
 
-import FSM
+import Mealstrom.FSM
 
 type Transitions s e a = (s,e) -> (s,[a])
 

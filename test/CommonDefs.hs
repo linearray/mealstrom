@@ -10,14 +10,12 @@ module CommonDefs where
 import Data.Aeson
 import Data.Time
 import Data.Typeable
-import Data.UUID
-import Debug.Trace
-import GHC.Generics
-import FSM
-import FSMApi
-import FSMStore
 
+import Mealstrom.FSM
+import Mealstrom.FSMApi
+import Mealstrom.FSMStore
 
+cutOff :: NominalDiffTime
 cutOff = 2
 
 -- |Don't ever use this in production :^)

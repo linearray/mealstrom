@@ -8,7 +8,7 @@
 
 {-|
 Module      : Timeout
-Description : Test that recovery actually uses a timeout
+Description : Make sure that recovery actually uses a timeout
 Copyright   : (c) Max Amanshauser, 2016
 License     : MIT
 Maintainer  : max@lambdalifting.org
@@ -19,27 +19,20 @@ module Timeout(runTimeoutTests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 
---import CommonDefs
-
 import Control.Concurrent
-import Control.Concurrent.MVar
-import Control.Monad
 import Data.Typeable
 import Data.Aeson
 import GHC.Generics
-
-import FSM
-import FSMApi
-import FSMStore
-import FSMTable
-import PostgresJSONStore as PGJSON
-import MemoryStore       as MemStore
 import Data.Text
-import Data.Time.Clock
 import Data.IORef
 import Data.UUID
 import Data.UUID.V4
-import Debug.Trace
+
+import Mealstrom.FSM
+import Mealstrom.FSMApi
+import Mealstrom.FSMTable
+import Mealstrom.PostgresJSONStore as PGJSON
+import Mealstrom.MemoryStore       as MemStore
 
 type TimeoutKey    = UUID
 data TimeoutState  = TimeoutState  deriving (Eq,Show,Generic,Typeable,ToJSON,FromJSON)
@@ -52,7 +45,7 @@ timeoutTransition :: (TimeoutState,TimeoutEvent) -> (TimeoutState,[TimeoutAction
 timeoutTransition (TimeoutState,TimeoutEvent) = (TimeoutState,[TimeoutAction])
 
 timeoutEffects :: IORef Bool -> MVar () -> Msg TimeoutAction -> IO Bool
-timeoutEffects b sync a = do
+timeoutEffects b sync _a = do
     bb <- readIORef b
 
     if   bb
@@ -61,7 +54,7 @@ timeoutEffects b sync a = do
 
     return True
 
-
+runTimeoutTests :: String -> TestTree
 runTimeoutTests c = testGroup "Timeout" [
     testCase "TimeoutPG" (runTest $ PGJSON.mkStore c),
     testCase "TimeoutMem" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore TimeoutKey TimeoutState TimeoutEvent TimeoutAction)))

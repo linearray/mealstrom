@@ -1,16 +1,16 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 {-|
-Module      : FSMStore
+Module      : Mealstrom.FSMStore
 Description : Typeclass for FSMStores
 Copyright   : (c) Max Amanshauser, 2016
 License     : MIT
 Maintainer  : max@lambdalifting.org
 -}
 
-module FSMStore where
+module Mealstrom.FSMStore where
 
-import FSM
+import Mealstrom.FSM
 
 data Proxy k s e a = Proxy
 

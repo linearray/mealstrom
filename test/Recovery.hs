@@ -17,27 +17,20 @@ module Recovery(runRecoveryTests) where
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import CommonDefs
-
 import Control.Concurrent
-import Control.Concurrent.MVar
-import Control.Monad
 import Data.Typeable
 import Data.Aeson
 import GHC.Generics
-
-import FSM
-import FSMApi
-import FSMStore
-import FSMTable
-import PostgresJSONStore as PGJSON
-import MemoryStore       as MemStore
 import Data.Text
-import Data.Time.Clock
 import Data.IORef
 import Data.UUID
 import Data.UUID.V4
-import Debug.Trace
+
+import Mealstrom.FSM
+import Mealstrom.FSMApi
+import Mealstrom.FSMTable
+import Mealstrom.PostgresJSONStore as PGJSON
+import Mealstrom.MemoryStore       as MemStore
 
 type RecoveryKey    = UUID
 data RecoveryState  = RecoveryState1  | RecoveryState2  deriving (Eq,Show,Generic,Typeable,ToJSON,FromJSON)
@@ -51,7 +44,7 @@ recoveryTransition (RecoveryState1,RecoveryEvent1) =
     (RecoveryState2,[RecoveryAction1])
 
 recoveryEffects :: IORef Bool -> MVar () -> Msg RecoveryAction -> IO Bool
-recoveryEffects b sync a = do
+recoveryEffects b sync _a = do
     bb <- readIORef b
 
     -- indicate that we read the IORef and are running the action now
@@ -59,7 +52,7 @@ recoveryEffects b sync a = do
 
     return bb
 
-
+runRecoveryTests :: String -> TestTree
 runRecoveryTests c = testGroup "Recovery" [
     testCase "RecoveryPG" (runTest $ PGJSON.mkStore c),
     testCase "RecoveryMem" (runTest (MemStore.mkStore :: Text -> IO (MemoryStore RecoveryKey RecoveryState RecoveryEvent RecoveryAction)))

@@ -8,7 +8,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 {-|
-Module      : FSMApi
+Module      : Mealstrom.FSMApi
 Description : API for FSMs
 Copyright   : (c) Max Amanshauser, 2016
 License     : MIT
@@ -18,19 +18,20 @@ This is the interface through which you primarily interact with a FSM
 from the rest of your program.
 -}
 
-module FSMApi where
-
-import FSM
-import FSMEngine
-import FSMStore
-import FSMTable
-import WALStore
+module Mealstrom.FSMApi where
 
 import           Control.Concurrent
 import           Control.Monad          (void)
 import qualified Data.Text           as  Text
 import           System.IO
 import           System.Timeout
+
+import           Mealstrom.FSM
+import           Mealstrom.FSMEngine
+import           Mealstrom.FSMStore
+import           Mealstrom.FSMTable
+import           Mealstrom.WALStore
+
 
 data FSMHandle st wal k s e a where
     FSMHandle :: (Eq s, Eq e, Eq a, FSMStore st k s e a, WALStore wal k, FSMKey k) => {

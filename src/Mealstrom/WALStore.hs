@@ -1,7 +1,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 {-|
-Module      : WALStore
+Module      : Mealstrom.WALStore
 Description : Store WALEntries
 Copyright   : (c) Max Amanshauser, 2016
 License     : MIT
@@ -11,7 +11,7 @@ A WALStore is anything being able to store WALEntries.
 WALEntries indicate how often a recovery process has been started for
 an instance.
 -}
-module WALStore where
+module Mealstrom.WALStore where
 
 import Data.Time.Clock
 

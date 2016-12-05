@@ -8,7 +8,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 {-|
-Module      : PostgresJSONStore
+Module      : Mealstrom.PostgresJSONStore
 Description : Main backend for FSMs and WALs.
 Copyright   : (c) Max Amanshauser, 2016
 License     : MIT
@@ -19,7 +19,7 @@ with the name passed as storeName when creating the PostgresJSONStore. WALs use
 the same name with "Wal" appended.
 -}
 
-module PostgresJSONStore(
+module Mealstrom.PostgresJSONStore(
     PostgresJSONStore,
     mkStore
 ) where
@@ -42,9 +42,9 @@ import           Data.Typeable                        hiding (Proxy)
 import           GHC.Generics
 import           Database.PostgreSQL.Simple.FromField (FromField (fromField), fromJSONField, Conversion)
 
-import FSM
-import FSMStore
-import WALStore
+import           Mealstrom.FSM
+import           Mealstrom.FSMStore
+import           Mealstrom.WALStore
 
 data PostgresJSONStore = PostgresJSONStore {
     storeConnPool :: Pool Connection,
@@ -55,14 +55,14 @@ instance (FromJSON s, FromJSON e, FromJSON a,
           ToJSON   s, ToJSON   e, ToJSON   a,
           Typeable s, Typeable e, Typeable a,
           MealyInstance k s e a)              => FSMStore PostgresJSONStore k s e a where
-    fsmRead st k p = PostgresJSONStore.fsmRead st k p >>= \mi -> return $ fmap (currState . machine) mi
-    fsmCreate      = PostgresJSONStore.fsmCreate
-    fsmUpdate      = PostgresJSONStore.fsmUpdate
+    fsmRead st k p = Mealstrom.PostgresJSONStore.fsmRead st k p >>= \mi -> return $ fmap (currState . machine) mi
+    fsmCreate      = Mealstrom.PostgresJSONStore.fsmCreate
+    fsmUpdate      = Mealstrom.PostgresJSONStore.fsmUpdate
 
 instance (FSMKey k) => WALStore PostgresJSONStore k where
-    walUpsertIncrement = PostgresJSONStore.walUpsertIncrement
-    walDecrement       = PostgresJSONStore.walDecrement
-    walScan            = PostgresJSONStore.walScan
+    walUpsertIncrement = Mealstrom.PostgresJSONStore.walUpsertIncrement
+    walDecrement       = Mealstrom.PostgresJSONStore.walDecrement
+    walScan            = Mealstrom.PostgresJSONStore.walScan
 
 -- |We create a database pool (no subpools) of 20 connections that will be closed
 -- after 10 seconds of inactivity.

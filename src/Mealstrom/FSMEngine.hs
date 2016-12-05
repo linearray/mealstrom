@@ -1,17 +1,17 @@
 {-# LANGUAGE RecordWildCards #-}
 
 {-|
-Module      : FSMEngine
+Module      : Mealstrom.FSMEngine
 Description : Apply changes to the machine and run effects
 Copyright   : (c) Max Amanshauser, 2016
 License     : MIT
 Maintainer  : max@lambdalifting.org
 -}
 
-module FSMEngine(patchPhase1,patchPhase2) where
+module Mealstrom.FSMEngine(patchPhase1,patchPhase2) where
 
-import FSM
-import FSMTable
+import Mealstrom.FSM
+import Mealstrom.FSMTable
 
 import Control.Monad (filterM, liftM)
 import Data.List
