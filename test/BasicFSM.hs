@@ -24,10 +24,8 @@ import Data.Text                   as Text
 import Data.Typeable
 import GHC.Generics
 
-import Mealstrom.FSM
-import Mealstrom.FSMApi
+import Mealstrom
 import Mealstrom.FSMStore
-import Mealstrom.FSMTable
 import Mealstrom.WALStore
 import Mealstrom.PostgresJSONStore as PGJSON
 import Mealstrom.MemoryStore       as MemStore

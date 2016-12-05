@@ -28,9 +28,7 @@ import Data.IORef
 import Data.UUID
 import Data.UUID.V4
 
-import Mealstrom.FSM
-import Mealstrom.FSMApi
-import Mealstrom.FSMTable
+import Mealstrom
 import Mealstrom.PostgresJSONStore as PGJSON
 import Mealstrom.MemoryStore       as MemStore
 

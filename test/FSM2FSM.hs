@@ -26,10 +26,8 @@ import GHC.Generics
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import Mealstrom.FSM
-import Mealstrom.FSMApi
+import Mealstrom
 import Mealstrom.FSMStore
-import Mealstrom.FSMTable
 import Mealstrom.PostgresJSONStore as PGJSON
 import Mealstrom.MemoryStore       as MemStore
 

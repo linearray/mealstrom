@@ -11,8 +11,7 @@ import Data.Aeson
 import Data.Time
 import Data.Typeable
 
-import Mealstrom.FSM
-import Mealstrom.FSMApi
+import Mealstrom
 import Mealstrom.FSMStore
 
 cutOff :: NominalDiffTime
