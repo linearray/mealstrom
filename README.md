@@ -52,17 +52,18 @@ cost (Removed Leg)   = 12000
 cost (Attached Leg)  = 20000
 
 type SSN              = Text
-data Limb             = Arm | Hand | Leg deriving (Show,Eq)
+data Limb             = Arm | Hand | Leg deriving (Show,Eq,ToJSON,FromJSON,Typeable)
 data PatientStatus    = NewPatient
                       | PatientAdmitted Integer [LimbSurgery]
                       | PatientReleased
                       | PatientDeceased
-                  deriving (Show,Eq)
-data LimbSurgery      = Removed Limb | Attached Limb deriving (Show,Eq)
-data Event            = Operation LimbSurgery | Release | Deceased deriving (Show,Eq)
-data Action           = SendBill Integer | SendCondolences deriving (Show,Eq)
+                  deriving (Show,Eq,ToJSON,FromJSON,Typeable)
+data LimbSurgery      = Removed Limb | Attached Limb deriving (Show,Eq,ToJSON,FromJSON,Typeable)
+data Event            = Operation LimbSurgery | Release | Deceased deriving (Show,Eq,ToJSON,FromJSON,Typeable)
+data Action           = SendBill Integer | SendCondolences deriving (Show,Eq,ToJSON,FromJSON,Typeable)
 
 -- You must create an instance of MealyInstance with your custom types
+-- To persist your FSM instances, i.e. to use something other than the MemoryStore, you must also have Typeable and (Aeson) ToJSON/FromJSON instances for your State, Event and Action types, which will typically be generically derived.
 instance MealyInstance SSN PatientStatus Event Action
 
 transition (NewPatient, op@(Operation a)) = PatientAdmitted (cost op) [op]
