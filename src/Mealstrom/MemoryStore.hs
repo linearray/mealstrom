@@ -53,28 +53,35 @@ _fsmRead MemoryStore{..} k = Map.lookup k memstoreBacking >>= \case
     Just a -> return $ Just a
     _      -> return Nothing
 
-_fsmCreate :: MemoryStore k s e a -> Instance k s e a -> STM ()
+-- |For compatibility with the other stores we check existence here
+_fsmCreate :: MemoryStore k s e a -> Instance k s e a -> STM (Maybe String)
 _fsmCreate MemoryStore{..} ins = do
-    t <- newTMVar ()
-    Map.insert t   (key ins) memstoreLocks
-    Map.insert ins (key ins) memstoreBacking
+    exists <- Map.lookup (key ins) memstoreBacking
+    maybe (do
+            t <- newTMVar ()
+            Map.insert t   (key ins) memstoreLocks
+            Map.insert ins (key ins) memstoreBacking
+            return Nothing
+          )
+          (\_ -> return $ Just "MemoryStore: Duplicate key")
+          exists
 
 -- |We need to use a lock here, because we are in the unfortunate position of
 -- having to use IO while performing STM operations, which is not possible.
 -- Using the lock we can rest assured no concurrent update operation can progress.
-_fsmUpdate :: MemoryStore k s e a -> k -> MachineTransformer s e a -> IO OutboxStatus
+_fsmUpdate :: MemoryStore k s e a -> k -> MachineTransformer s e a -> IO MealyStatus
 _fsmUpdate MemoryStore{..} k t =
     let
         m  = memstoreBacking
         ls = memstoreLocks
     in
         atomically (Map.lookup k ls) >>= \lock ->
-            maybe (return NotFound)
+            maybe (return MealyError)
                   (\l ->
                       bracket_ (atomically $ takeTMVar l)
                                (atomically $ putTMVar l ())
                                (atomically (Map.lookup k m) >>= \res ->
-                                   maybe (return NotFound)
+                                   maybe (return MealyError)
                                          (\inst ->
                                              (do
                                                  newMach <- t (machine inst)

@@ -21,6 +21,7 @@ from the rest of your program.
 module Mealstrom.FSMApi where
 
 import           Control.Concurrent
+import           Control.Exception
 import           Control.Monad          (void)
 import qualified Data.Text           as  Text
 import           System.IO
@@ -50,27 +51,28 @@ get FSMHandle{..} k = fsmRead fsmStore k (Proxy :: Proxy k s e a)
 
 
 -- |Idempotent because of usage of caller-generated UUIDs
--- FIXME: This can throw an exception that we may want to catch.
 post :: forall st wal k s e a . FSMStore st k s e a =>
         FSMHandle st wal k s e a                                 ->
         k                                                        ->
-        s                                                        -> IO ()
+        s                                                        -> IO Bool
 post FSMHandle{..} k s0 =
-    fsmCreate fsmStore (mkInstance k s0 [] :: Instance k s e a)
+    fsmCreate fsmStore (mkInstance k s0 [] :: Instance k s e a) >>= \case
+        Nothing -> return True
+        Just s  -> hPutStrLn stderr s >> return False
 
 
 -- |Concurrent updates will be serialised by Postgres.
--- Do not call this function for FSM Instances that do not exist yet.
 -- Returns True when the state transition has been successfully computed
 -- and actions have been scheduled.
--- Returns False on failure to compute state transition.
+-- Returns False on failure.
 patch :: forall st wal k s e a . (FSMStore st k s e a, MealyInstance k s e a, FSMKey k) => FSMHandle st wal k s e a -> k -> [Msg e] -> IO Bool
 patch h@FSMHandle{..} k es = do
     openTxn walStore k
 
-    status <- fsmUpdate fsmStore k ((patchPhase1 fsmTable es) :: MachineTransformer s e a)
+    status <- handle (\(e::SomeException) -> hPutStrLn stderr (show e) >> return MealyError)
+                     (fsmUpdate fsmStore k ((patchPhase1 fsmTable es) :: MachineTransformer s e a))
 
-    if status /= NotFound
+    if status /= MealyError
     then recover h k >> return True
     else return False
 

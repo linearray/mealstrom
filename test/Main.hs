@@ -3,6 +3,7 @@ import FSM2FSM    (runFSM2FSMTests)
 import CounterFSM (runCounterTests)
 import Recovery   (runRecoveryTests)
 import Timeout    (runTimeoutTests)
+import Exception  (runExceptionTests)
 
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Types
@@ -22,5 +23,6 @@ main =
             runFSM2FSMTests c,
             runCounterTests c,
             runRecoveryTests c,
-            runTimeoutTests c
+            runTimeoutTests c,
+            runExceptionTests c
             ]

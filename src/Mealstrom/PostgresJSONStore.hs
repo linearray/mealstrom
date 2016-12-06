@@ -25,6 +25,7 @@ module Mealstrom.PostgresJSONStore(
 ) where
 
 
+import           Control.Exception                           (handle,SomeException)
 import           Control.Monad                               (void)
 import           Database.PostgreSQL.Simple                as PGS
 import           Database.PostgreSQL.Simple.FromRow
@@ -91,11 +92,13 @@ fsmCreate :: forall k s e a .
               Typeable s, Typeable e, Typeable a,
               MealyInstance k s e a)              =>
               PostgresJSONStore                   ->
-              Instance k s e a                    -> IO ()
+              Instance k s e a                    -> IO (Maybe String)
 fsmCreate st i =
-    withResource (storeConnPool st) (\conn ->
-        withTransactionSerializable conn $
-            void $ _postValue conn (storeName st) (toText $ key i) (machine i))
+    handle (\(e::SomeException) -> return $ Just (show e))
+           (withResource (storeConnPool st) (\conn ->
+               withTransactionSerializable conn $ do
+                   void $ _postValue conn (storeName st) (toText $ key i) (machine i)
+                   return Nothing))
 
 
 -- |Postgresql-simple exceptions will be caught by `patch` in FSMApi.hs
@@ -124,7 +127,7 @@ fsmUpdate :: forall k s e a .
               MealyInstance k s e a)              =>
               PostgresJSONStore                   ->
               k                                   ->
-              MachineTransformer s e a            -> IO OutboxStatus
+              MachineTransformer s e a            -> IO MealyStatus
 fsmUpdate st k t =
     withResource (storeConnPool st) (\conn ->
         withTransactionSerializable conn $ do
@@ -132,10 +135,10 @@ fsmUpdate st k t =
             let entry = listToMaybe el
 
             maybe
-                (return NotFound)
+                (return MealyError)
                 (\e -> do
                     newMachine <- t (machine e)
-                    void (_postValue conn (storeName st) (toText k) newMachine)
+                    void (_postOrUpdateValue conn (storeName st) (toText k) newMachine)
                     return $ if Prelude.null (outbox newMachine) then Done else Pending)
                 entry)
 
@@ -209,9 +212,13 @@ _getValueForUpdate :: (FromRow v) => Connection -> Text -> Text -> IO [v]
 _getValueForUpdate c tbl k =
     PGS.query c "SELECT * FROM ? WHERE id = ? FOR UPDATE" (Identifier tbl, k)
 
+_postOrUpdateValue :: (ToField v) => Connection -> Text -> Text -> v -> IO Int64
+_postOrUpdateValue c tbl k v =
+    PGS.execute c "INSERT INTO ? VALUES (?,?) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data" (Identifier tbl, k, v)
+
 _postValue :: (ToField v) => Connection -> Text -> Text -> v -> IO Int64
 _postValue c tbl k v =
-    PGS.execute c "INSERT INTO ? VALUES (?,?) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data" (Identifier tbl, k, v)
+    PGS.execute c "INSERT INTO ? VALUES (?,?)" (Identifier tbl, k, v)
 
 _deleteValue :: (ToField k) => Connection -> Text -> k -> IO Int64
 _deleteValue c tbl k =

@@ -29,7 +29,10 @@ import           Data.UUID.V4
 import           GHC.Generics
 
 type MachineTransformer s e a = Machine s e a -> IO (Machine s e a)
-data OutboxStatus             = NotFound | Pending | Done deriving (Eq, Show)
+
+-- |A data type that often comes in handy when describing whether
+-- updates have succeeded in the backend.
+data MealyStatus              = MealyError | Pending | Done deriving (Eq, Show)
 
 
 -- |FSMs are uniquely identified by a type k, which must be convertible from/to Text.
