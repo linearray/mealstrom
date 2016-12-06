@@ -1,4 +1,4 @@
-Mealstrom [![CircleCI](https://circleci.com/gh/linearray/mealstrom.svg?style=svg)](https://circleci.com/gh/linearray/mealstrom)
+Mealstrom
 =========
 Manipulate FSMs and store them in PostgreSQL.
 
