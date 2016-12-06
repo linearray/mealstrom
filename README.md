@@ -110,13 +110,13 @@ main = do
 ### Reliability
 You may have noticed up there, that "patches" are wrapped in Msgs. They are used to give certain reliability guarantees in Mealstrom.
 
-The API through which you should interact with instances guarantees idempotance for state transitions. `get` is trivially idempotent, `post` will let you know if the instance already exists and it is safe to retry. Finally, for `patch` you generate a `Msg` using `FSM.mkMsg` or `FSM.mkMsgs` that wraps an `Event` you want to send to an instance.
+The API through which you should interact with instances guarantees idempotance for state transitions. `get` is trivially idempotent, `post` will let you know if the instance already exists and it is safe to retry. Finally, for `patch` you generate a `Msg` using `mkMsg` or `mkMsgs` that wraps an `Event` you want to send to an instance.
 
 Once `patch` returns, you can be assured that the state transition has occurred and the associated Actions are now running asynchronously. You can safely retry `patch`, because when a `msgId` is already known, the message is discarded.
 
 You can run arbitrary effects, they will be retried until a retry limit you set is hit or until they succeed. This means they may happen [more than once] (https://en.wikipedia.org/wiki/Two_Generals'_Problem) or not at all. Failed effects can be retried at any time by calling `recoverAll`.
 
-If, however, you choose to send a Msg to another _MealyInstance_ as an effect, i.e. call patch on it in the `effects` function, you can reuse the msgId from the first Msg. The receiving FSM instance can then even do the same thing, and so on. This way you can form a chain of idempotent updates that will, assuming failures are intermittent, eventually succeed.
+If, however, you choose to send a Msg to another _MealyInstance_ as an effect, i.e. call `patch` on it in the `effects` function, you can reuse the msgId from the first Msg. The receiving FSM instance can then even do the same thing, and so on. This way you can form a chain of idempotent updates that will, assuming failures are intermittent, eventually succeed.
 
 
 Lastly, Mealstrom is not a good fit if:
