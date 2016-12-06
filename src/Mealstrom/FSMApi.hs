@@ -50,7 +50,7 @@ get :: forall st wal k s e a . FSMStore st k s e a => FSMHandle st wal k s e a -
 get FSMHandle{..} k = fsmRead fsmStore k (Proxy :: Proxy k s e a)
 
 
--- |Idempotent because of usage of caller-generated UUIDs
+-- |Idempotent because of usage of caller-generated keys.
 post :: forall st wal k s e a . FSMStore st k s e a =>
         FSMHandle st wal k s e a                                 ->
         k                                                        ->
