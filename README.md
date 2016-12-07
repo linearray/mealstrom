@@ -23,7 +23,44 @@ Modeling a process as an FSA is the natural way to do it. FSAs have defined stat
 
 You can then create instances of the machine definition and manipulate them using API functions.
 
-A Mealy machine in Mealstrom has the types **Key**, **State**, **Event** and **Action**.
+A Mealy machine in Mealstrom has the types **State**, **Event** and **Action**, an instance furthermore has a type **Key**. Mealstrom comes with support for `Text` and `UUID` as the Key type. You can have your own Key type, if you make it an instance of `(FSMKey k)` and implement `toText :: k -> Text` and `fromText :: Text -> k`. If you have no preference, it is recommended to use `UUID`.
+
+To persist the machines to PostgreSQL, you need to have Aeson `ToJSON`, `FromJSON` and `Typeable` instances for your four types. Typically, they can be derived generically.
+
+Once you have your four types, you make an instance of `MealyInstance`.
+
+Let's go through an example - A simple system a surgery ward might use to track patients.
+
+```
+-- First the language extension and import dance:
+
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DeriveAnyClass, DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiWayIf #-}
+
+import Data.Aeson
+import Data.Text (Text)
+import Data.Typeable
+import GHC.Generics
+
+import Mealstrom
+import Mealstrom.PostgresJSONStore as PGJSON
+
+type SSN              = Text
+data Limb             = Arm | Hand | Leg deriving (Show,Eq,Generic,ToJSON,FromJSON,Typeable)
+data PatientStatus    = PatientAdmitted Integer [LimbSurgery]
+                      | PatientReleased
+                      | PatientDeceased
+                  deriving (Show,Eq,Generic,ToJSON,FromJSON,Typeable)
+data LimbSurgery      = Removed Limb | Attached Limb deriving (Show,Eq,Generic,ToJSON,FromJSON,Typeable)
+data Event            = Operation LimbSurgery | Release | Deceased deriving (Show,Eq,Generic,ToJSON,FromJSON,Typeable)
+data Action           = SendBill Integer | SendCondolences deriving (Show,Eq,Generic,ToJSON,FromJSON,Typeable)
+
+instance MealyInstance SSN PatientStatus Event Action
+
+```
 
 There is also a transition function `transition :: (State,Event) -> (State,[Action])`,
 
@@ -35,18 +72,17 @@ An `Action` (wrapped in a Msg) is then used to pattern match in `effects` and ex
 
 NB *Action* is the type you use to represent the *effects* you want to run.
 
-
-Because the states, events, actions as well as the transition/effects functions are just Haskell data types and code, you can go crazy, but for now consider this simple example of a system a surgical ward might have to model its "business logic":
+Because the states, events, actions as well as the transition/effects functions are just Haskell data types and code, you can go crazy, but for now let's expand on the simple example above:
 
 ```
 -- |Calculates current number of specified limb on patient
 -- Boldly assumes every patient comes in with full set of limbs
-limbsOnPatient :: LimbSurgery -> Limb -> Int
+limbsOnPatient :: [LimbSurgery] -> Limb -> Int
 limbsOnPatient ops limb =
-    foldr (\op acc -> case op of
-        (Removed limb)  -> acc-1
-        (Attached limb) -> acc+1
-        _               -> acc) 2 ops
+    foldr (\op acc -> if
+            | op == Removed limb  -> acc-1
+            | op == Attached limb -> acc+1
+            | otherwise           -> acc) 2 ops
 
 cost :: LimbSurgery -> Integer
 cost (Removed Arm)   =  5000
@@ -56,73 +92,57 @@ cost (Attached Hand) =  8000
 cost (Removed Leg)   = 12000
 cost (Attached Leg)  = 20000
 
-type SSN              = Text
-data Limb             = Arm | Hand | Leg deriving (Show,Eq,ToJSON,FromJSON,Typeable)
-data PatientStatus    = NewPatient
-                      | PatientAdmitted Integer [LimbSurgery]
-                      | PatientReleased
-                      | PatientDeceased
-                  deriving (Show,Eq,ToJSON,FromJSON,Typeable)
-data LimbSurgery      = Removed Limb | Attached Limb deriving (Show,Eq,ToJSON,FromJSON,Typeable)
-data Event            = Operation LimbSurgery | Release | Deceased deriving (Show,Eq,ToJSON,FromJSON,Typeable)
-data Action           = SendBill Integer | SendCondolences deriving (Show,Eq,ToJSON,FromJSON,Typeable)
-
--- You must create an instance of MealyInstance with your custom types
--- To persist your FSM instances, i.e. to use something other than the MemoryStore, you must also have Typeable and (Aeson) ToJSON/FromJSON instances for your State, Event and Action types, which will typically be generically derived.
-instance MealyInstance SSN PatientStatus Event Action
-
-transition (NewPatient, op@(Operation a)) = PatientAdmitted (cost op) [op]
-
-transition (PatientAdmitted bill ls, Removed l)
+tr (PatientAdmitted bill ls, Operation (Removed l))
     | limbsOnPatient ls l < 1 = error "Cannot remove limb that's not there anymore!"
     | otherwise               = let newbill = bill + cost (Removed l) in
         (PatientAdmitted newbill $ Removed l : ls, [SendCondolences])
 
-transition (PatientAdmitted bill ls, Attached l)
-	| limbsOnPatient ls l > 1 = error "Cannot attach limb, there is no space!"
-	| otherwise               = let newbill = bill + cost (Attached l) in
-	    (PatientAdmitted newbill $ Attached l : ls, [])
+tr (PatientAdmitted bill ls, Operation (Attached l))
+    | limbsOnPatient ls l > 1 = error "Cannot attach limb, there is no space!"
+    | otherwise               = let newbill = bill + cost (Attached l) in
+        (PatientAdmitted newbill $ Attached l : ls, [])
 
-transition (PatientAdmitted bill _ls, Release)  = (PatientReleased, [SendBill bill])
-transition (PatientAdmitted bill _ls, Deceased) = (PatientDeceased, [SendCondolences, SendBill bill])
+tr (PatientAdmitted bill _ls, Release)  = (PatientReleased, [SendBill bill])
+tr (PatientAdmitted bill _ls, Deceased) = (PatientDeceased, [SendCondolences, SendBill bill])
 
-transition (NewPatient,      _) = error "Patients are neither allowed to leave nor to die here before surgery"
-transition (PatientDeceased, _) = error "Operations on dead patients are not billable"
+tr (PatientReleased, _) = error "Patient escaped, operation invalid."
+tr (PatientDeceased, _) = error "Operations on dead patients are not billable"
 
-effects :: Msg Action -> IO Bool
-effects (Msg msgId SendCondolences) = putStrLn "not implemented" >> return True
-effects (Msg msgId (SendBill bill)) = charge bill :: IO Bool
+eff :: Msg Action -> IO Bool
+eff (Msg msgId SendCondolences) = putStrLn "not implemented" >> return True
+eff (Msg msgId (SendBill bill)) = charge bill :: IO Bool
 ```
 
 
-From wherever you wish to manipulate a Patient instance, you can use a simple REST-like interface:
+From wherever you wish to manipulate a Patient instance, you can then use a simple REST-like interface:
 
 ```
 main = do
-	st <- PGJSON.mkStore "host='localhost' port=5432 dbname='butchershop'
-	
-	-- You specify transition and effects when creating the Handle for a machine
-	-- This is so that you can pass variables to the functions, if you want to.
-	let t          = FSMTable transition effects
-	let patientFSM = FSMHandle st st t 90 3
-	
-	post patientFSM "123-12-1235" NewPatient
-	mkMsgs [Removed Arm] >>= patch patientFSM  "123-123-1235"
-	
-	get patientFSM "123-12-1235"  -- Just(PatientAdmitted 5000 [Removed Arm])
+    st <- PGJSON.mkStore "host='localhost' port=5432 dbname='butchershop'" "Patient"
+
+    -- You specify transition and effects when creating the Handle for a machine
+    -- This is so that you can pass variables to the functions, if you want to.
+    let t          = FSMTable tr eff
+    let patientFSM = FSMHandle st st t 90 3 :: FSMHandle PostgresJSONStore PostgresJSONStore SSN PatientStatus Event Action
+
+    -- `post` gives you the flexibility of having different start states.
+    post patientFSM "123-12-1235" (PatientAdmitted 0 [])
+    res <- mkMsgs [Operation (Removed Arm)] >>= patch patientFSM "123-12-1235"
+
+    get patientFSM "123-12-1235"  -- Just (PatientAdmitted 5000 [Removed Arm])
 ```
 
 
 ### Reliability
 You may have noticed up there, that "patches" are wrapped in Msgs. They are used to give certain reliability guarantees in Mealstrom.
 
-The API through which you should interact with instances guarantees idempotance for state transitions. `get` is trivially idempotent, `post` will let you know if the instance already exists and it is safe to retry. Finally, for `patch` you generate a `Msg` using `mkMsg` or `mkMsgs` that wraps an `Event` you want to send to an instance.
+The `FSMAPI` through which you should interact with instances guarantees idempotance. `get` is trivially idempotent, `post` will let you know if the instance already exists and it is safe to retry. Finally, for `patch` you generate a `Msg` using `mkMsg` or `mkMsgs` that wraps an `Event` you want to send to an instance.
 
-Once `patch` returns, you can be assured that the state transition has occurred and the associated Actions are now running asynchronously. You can safely retry `patch`, because when a `msgId` is already known, the message is discarded.
+Once `patch` returns `True`, you can be assured that the state transition has occurred and the associated Actions are now running asynchronously. You can safely retry `patch`, because when a `msgId` is already known, the message is discarded.
 
 You can run arbitrary effects, they will be retried until a retry limit you set is hit or until they succeed. This means they may happen [more than once] (https://en.wikipedia.org/wiki/Two_Generals'_Problem) or not at all. Failed effects can be retried at any time by calling `recoverAll`.
 
-If, however, you choose to send a Msg to another _MealyInstance_ as an effect, i.e. call `patch` on it in the `effects` function, you can reuse the msgId from the first Msg. The receiving FSM instance can then even do the same thing, and so on. This way you can form a chain of idempotent updates that will, assuming failures are intermittent, eventually succeed.
+If, however, you choose to send a Msg to another _MealyInstance_ as an effect, i.e. call `patch` on it in the `effects` function, you can reuse the `msgId` from the first `Msg`. The receiving FSM instance can then even do the same thing, and so on. This way you can form a chain of idempotent updates that will, assuming failures are intermittent, eventually succeed.
 
 ### Log
 The `FSMAPI` attempt to provide an exception-safe way to work with FSM instances in production. If you want to examine an instances log or alter the past, you can use the functions from the respective stores directly, but have to take care of exceptions yourself.
