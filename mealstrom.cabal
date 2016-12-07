@@ -1,6 +1,8 @@
 name:                mealstrom
 version:             0.0.0.1
 synopsis:            Manipulate FSMs and store them in PostgreSQL.
+homepage:            https://github.com/linearray/mealstrom
+bug-reports:         https://github.com/linearray/mealstrom/issues
 description:
 
     Mealstrom is a library that allows you to work with Mealy machines,
@@ -14,7 +16,7 @@ maintainer:          max@lambdalifting.org
 copyright:           Copyright (c) Max Amanshauser 2016
 category:            Database
 build-type:          Simple
--- extra-source-files:  
+extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
