@@ -21,7 +21,10 @@ the same name with "Wal" appended.
 
 module Mealstrom.PostgresJSONStore(
     PostgresJSONStore,
-    mkStore
+    mkStore,
+    _fsmRead,
+    _fsmCreate,
+    _fsmUpdate
 ) where
 
 
@@ -41,7 +44,9 @@ import           Data.Text
 import           Data.Time
 import           Data.Typeable                        hiding (Proxy)
 import           GHC.Generics
-import           Database.PostgreSQL.Simple.FromField (FromField (fromField), fromJSONField, Conversion)
+import           Database.PostgreSQL.Simple.FromField        (FromField (fromField),
+                                                              fromJSONField,
+                                                              Conversion)
 
 import           Mealstrom.FSM
 import           Mealstrom.FSMStore
@@ -56,9 +61,9 @@ instance (FromJSON s, FromJSON e, FromJSON a,
           ToJSON   s, ToJSON   e, ToJSON   a,
           Typeable s, Typeable e, Typeable a,
           MealyInstance k s e a)              => FSMStore PostgresJSONStore k s e a where
-    fsmRead st k p = Mealstrom.PostgresJSONStore.fsmRead st k p >>= \mi -> return $ fmap (currState . machine) mi
-    fsmCreate      = Mealstrom.PostgresJSONStore.fsmCreate
-    fsmUpdate      = Mealstrom.PostgresJSONStore.fsmUpdate
+    fsmRead st k p = Mealstrom.PostgresJSONStore._fsmRead st k p >>= \mi -> return $ fmap (currState . machine) mi
+    fsmCreate      = Mealstrom.PostgresJSONStore._fsmCreate
+    fsmUpdate      = Mealstrom.PostgresJSONStore._fsmUpdate
 
 instance (FSMKey k) => WALStore PostgresJSONStore k where
     walUpsertIncrement = Mealstrom.PostgresJSONStore.walUpsertIncrement
@@ -74,26 +79,26 @@ givePool creator = createPool creator close 1 10 20
 -- #########
 -- # FSM API
 -- #########
-fsmRead :: (FromJSON s, FromJSON e, FromJSON a,
-            Typeable s, Typeable e, Typeable a,
-            MealyInstance k s e a)              =>
-            PostgresJSONStore                   ->
-            k                                   ->
-            Proxy k s e a                       -> IO (Maybe (Instance k s e a))
-fsmRead st k _p =
+_fsmRead :: (FromJSON s, FromJSON e, FromJSON a,
+             Typeable s, Typeable e, Typeable a,
+             MealyInstance k s e a)              =>
+             PostgresJSONStore                   ->
+             k                                   ->
+             Proxy k s e a                       -> IO (Maybe (Instance k s e a))
+_fsmRead st k _p =
     withResource (storeConnPool st) (\conn ->
         withTransactionSerializable conn $ do
             el <- _getValue conn (storeName st) (toText k)
             return $ listToMaybe el)
 
 
-fsmCreate :: forall k s e a .
-             (ToJSON   s, ToJSON   e, ToJSON   a,
-              Typeable s, Typeable e, Typeable a,
-              MealyInstance k s e a)              =>
-              PostgresJSONStore                   ->
-              Instance k s e a                    -> IO (Maybe String)
-fsmCreate st i =
+_fsmCreate :: forall k s e a .
+              (ToJSON   s, ToJSON   e, ToJSON   a,
+               Typeable s, Typeable e, Typeable a,
+               MealyInstance k s e a)              =>
+               PostgresJSONStore                   ->
+               Instance k s e a                    -> IO (Maybe String)
+_fsmCreate st i =
     handle (\(e::SomeException) -> return $ Just (show e))
            (withResource (storeConnPool st) (\conn ->
                withTransactionSerializable conn $ do
@@ -105,11 +110,11 @@ fsmCreate st i =
 -- In principle all transaction isolation levels offered by Postgres are safe
 -- here, because we do explicit locking in _getValueForUpdate.
 -- However things become more interesting when considering that you can do
--- arbitrary queries in Actions, either using the functions in this
+-- arbitrary queries in effects, either using the functions in this
 -- module or otherwise.
 
 -- We use Serializable here, because it involves no extra cost in our case, and
--- it provides safety when used in arbitrary ways in Actions.
+-- it provides safety when used in arbitrary ways in effects.
 -- Hence,
 -- * Serializable is recommended and safe.
 -- * Repeatable Read, or in PostgreSQL's case Snapshot Isolation, does *not* protect
@@ -118,17 +123,17 @@ fsmCreate st i =
 -- * Read Committed means the usual caveats apply (Nonrepeatable reads, Phantom reads, Write skew…).
 --
 --   If you are not careful you may end up with wrong data or attempts to insert data
---   with a duplicate ID resulting in an exception,…
+--   with a duplicate ID…
 --   Hence, when in doubt, do not lower the isolation level.
-fsmUpdate :: forall k s e a .
-             (FromJSON s, FromJSON e, FromJSON a,
-              ToJSON   s, ToJSON   e, ToJSON   a,
-              Typeable s, Typeable e, Typeable a,
-              MealyInstance k s e a)              =>
-              PostgresJSONStore                   ->
-              k                                   ->
-              MachineTransformer s e a            -> IO MealyStatus
-fsmUpdate st k t =
+_fsmUpdate :: forall k s e a .
+              (FromJSON s, FromJSON e, FromJSON a,
+               ToJSON   s, ToJSON   e, ToJSON   a,
+               Typeable s, Typeable e, Typeable a,
+               MealyInstance k s e a)              =>
+               PostgresJSONStore                   ->
+               k                                   ->
+               MachineTransformer s e a            -> IO MealyStatus
+_fsmUpdate st k t =
     withResource (storeConnPool st) (\conn ->
         withTransactionSerializable conn $ do
             el <- _getValueForUpdate conn (storeName st) (toText k) :: IO [Instance k s e a]

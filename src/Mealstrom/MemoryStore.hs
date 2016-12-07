@@ -14,6 +14,9 @@ Maintainer  : max@lambdalifting.org
 module Mealstrom.MemoryStore (
     MemoryStore,
     mkStore,
+    _fsmRead,
+    _fsmCreate,
+    _fsmUpdate,
     printWal
 ) where
 
