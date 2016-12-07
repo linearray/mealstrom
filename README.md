@@ -23,11 +23,16 @@ Modeling a process as an FSA is the natural way to do it. FSAs have defined stat
 
 You can then create instances of the machine definition and manipulate them using API functions.
 
-A Mealy machine in Mealstrom has States, Events and Actions. There is also a transition function `transition :: (State,Event) -> (State,[Action])`, as well as an effects function `effects :: Msg Action -> IO Bool`.
+A Mealy machine in Mealstrom has the types **Key**, **State**, **Event** and **Action**.
+
+There is also a transition function `transition :: (State,Event) -> (State,[Action])`,
+
+as well as an effects function `effects :: Msg Action -> IO Bool`.
 
 You implement `transition` to indicate which transitions are valid and which effects you want to run when a transition occurs.
 
-Action (wrapped in a Msg) is then used to pattern match in `effects` and execute the appropriate code.
+An `Action` (wrapped in a Msg) is then used to pattern match in `effects` and execute the appropriate code.
+
 NB *Action* is the type you use to represent the *effects* you want to run.
 
 
@@ -81,8 +86,8 @@ transition (PatientAdmitted bill ls, Attached l)
 transition (PatientAdmitted bill _ls, Release)  = (PatientReleased, [SendBill bill])
 transition (PatientAdmitted bill _ls, Deceased) = (PatientDeceased, [SendCondolences, SendBill bill])
 
-transition (NewPatient,      _)                 = error "Patients are neither allowed to leave nor to die here before surgery"
-transition (PatientDeceased, _)                 = error "Operations on dead patients are not billable"
+transition (NewPatient,      _) = error "Patients are neither allowed to leave nor to die here before surgery"
+transition (PatientDeceased, _) = error "Operations on dead patients are not billable"
 
 effects :: Msg Action -> IO Bool
 effects (Msg msgId SendCondolences) = putStrLn "not implemented" >> return True
@@ -90,7 +95,7 @@ effects (Msg msgId (SendBill bill)) = charge bill :: IO Bool
 ```
 
 
-From wherever you wish to manipulate a Patient instance then, you can use a simple REST-like interface:
+From wherever you wish to manipulate a Patient instance, you can use a simple REST-like interface:
 
 ```
 main = do
@@ -119,10 +124,11 @@ You can run arbitrary effects, they will be retried until a retry limit you set 
 
 If, however, you choose to send a Msg to another _MealyInstance_ as an effect, i.e. call `patch` on it in the `effects` function, you can reuse the msgId from the first Msg. The receiving FSM instance can then even do the same thing, and so on. This way you can form a chain of idempotent updates that will, assuming failures are intermittent, eventually succeed.
 
+### Log
+The `FSMAPI` attempt to provide an exception-safe way to work with FSM instances in production. If you want to examine an instances log or alter the past, you can use the functions from the respective stores directly, but have to take care of exceptions yourself.
 
 Lastly, Mealstrom is not a good fit if:
 
 * You require every last bit of performance.
 * You do not care particularly whether updates are occasionally lost.
 * You require complex, cross-entity queries and/or already have a large amount of query language code, so that the drawbacks cited above do not seem too bad in comparison.
-
