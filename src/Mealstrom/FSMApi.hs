@@ -63,7 +63,7 @@ post FSMHandle{..} k s0 =
 
 -- |Concurrent updates will be serialised by Postgres.
 -- Returns True when the state transition has been successfully computed
--- and actions have been scheduled.
+-- and actions have been scheduled, now or at any time in the past.
 -- Returns False on failure.
 patch :: forall st wal k s e a . (FSMStore st k s e a, MealyInstance k s e a, FSMKey k) => FSMHandle st wal k s e a -> k -> [Msg e] -> IO Bool
 patch h@FSMHandle{..} k es = do
