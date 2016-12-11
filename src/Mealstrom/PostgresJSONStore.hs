@@ -24,7 +24,8 @@ module Mealstrom.PostgresJSONStore(
     mkStore,
     _fsmRead,
     _fsmCreate,
-    _fsmUpdate
+    _fsmUpdate,
+    _batchConversion
 ) where
 
 
@@ -232,6 +233,28 @@ _deleteValue c tbl k =
 _queryValue :: (FromRow v) => Connection -> Text -> Text -> IO [v]
 _queryValue c tbl q =
     PGS.query c "SELECT * FROM ? WHERE data @> ?" (Identifier tbl, q)
+
+_getKeys :: forall k . (FSMKey k) => PostgresJSONStore -> Text -> IO [k]
+_getKeys st tbl =
+    withResource (storeConnPool st) (\conn -> do
+       keys <- PGS.query conn "SELECT id FROM ?" (Only (Identifier tbl)) :: IO [Only Text]
+
+       return  (fmap (\(Only t) -> fromText t) keys :: [k]))
+
+-- | You can call this function when you changed the representation of your
+-- MealyMachine. It will read all instances through FromJSON and write them
+-- back using ToJSON.
+_batchConversion :: forall k s e a .
+                   (FromJSON s, FromJSON e, FromJSON a,
+                    ToJSON   s, ToJSON   e, ToJSON   a,
+                    Typeable s, Typeable e, Typeable a, MealyInstance k s e a)
+                 => PostgresJSONStore
+                 -> Text
+                 -> Proxy k s e a
+                 -> IO ()
+_batchConversion st tbl _p = do
+    keys <- _getKeys st tbl :: IO [k]
+    mapM_ (\k -> _fsmUpdate st k (return :: MachineTransformer s e a)) keys
 
 
 -- |Instance to convert one DB row to an instance of Instance ;)

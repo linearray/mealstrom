@@ -147,6 +147,13 @@ If, however, you choose to send a Msg to another _MealyInstance_ as an effect, i
 ### Log
 The `FSMAPI` attempt to provide an exception-safe way to work with FSM instances in production. If you want to examine an instances log or alter the past, you can use the functions from the respective stores directly, but have to take care of exceptions yourself.
 
+### "Schema" updates
+If at any time you decide to extend one of the types that constitute a `MealyMachine`, you must also update the JSON serialiser/deserialiser and make sure the deserialiser also works when the new fields are not present. Sometimes this is trivial, e.g. when adding another data constructor to a sum type. Sometimes the change is incompatible and you need to provide a default value or even a conversion (be careful not to shoot yourself in the foot by introducing ambiguity whether something is a "new" or an "old" instance).
+
+Whenever you deserialise an "old" instance, it will be converted to a "new" instance and when you update it, it will be written back in the new format.
+
+If you prefer, you can perform a batch update by using _batchConvert in PostgresJSONStore (this may take a long time if you have a lot of data).
+
 Lastly, Mealstrom is not a good fit if:
 
 * You require every last bit of performance.
