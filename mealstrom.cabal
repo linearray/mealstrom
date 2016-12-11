@@ -14,7 +14,7 @@ license-file:        LICENSE
 author:              Max Amanshauser
 maintainer:          max@lambdalifting.org
 copyright:           Copyright (c) Max Amanshauser 2016
-category:            Database
+category:            Database, Control
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
