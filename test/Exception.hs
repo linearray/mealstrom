@@ -61,7 +61,6 @@ runTest :: (FSMStore st MyKey MyState MyEvent MyAction,
             WALStore st MyKey) => (Text -> IO st) -> IO ()
 runTest c = do
     st       <- c "ExceptionTest"
-    sync     <- newEmptyMVar
     let t     = FSMTable myTransition myEffects
     let myFSM = FSMHandle st st t 90 3
     firstId <- nextRandom
