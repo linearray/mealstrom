@@ -4,6 +4,7 @@ import CounterFSM (runCounterTests)
 import Recovery   (runRecoveryTests)
 import Timeout    (runTimeoutTests)
 import Exception  (runExceptionTests)
+import Upgrade    (runUpgradeTests)
 
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Types
@@ -24,5 +25,6 @@ main =
             runCounterTests c,
             runRecoveryTests c,
             runTimeoutTests c,
-            runExceptionTests c
+            runExceptionTests c,
+            runUpgradeTests c
             ]
