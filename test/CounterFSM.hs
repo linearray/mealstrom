@@ -94,4 +94,4 @@ runTest c = do
 
     s <- get fsm i
 
-    assert $ s == Just Desu
+    s @?= Just Desu

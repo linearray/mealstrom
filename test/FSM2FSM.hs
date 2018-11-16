@@ -136,8 +136,8 @@ runFSM2FSMTests c =
         waitQSem sync
         waitQSem sync
         pymtstatus <- get paymentFsm paymentId
-        assert $ pymtstatus == Just PaymentPaid
+        pymtstatus @?= Just PaymentPaid
 
         -- Now check that the second FSM has been updated as well
         bankstatus <- get bankFsm bankAccount
-        assert $ bankstatus == Just (BankAccountBalance 1000)
+        bankstatus @?= Just (BankAccountBalance 1000)

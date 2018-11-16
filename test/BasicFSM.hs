@@ -84,18 +84,18 @@ runTest c = do
 
     post myFSM firstId New
     Just fsmState1 <- get myFSM firstId
-    assert $ fsmState1 == New
+    fsmState1 @?= New
 
     msg1 <- mkMsgs [Create]
     _    <- patch myFSM firstId msg1
 
     takeMVar sync
     Just fsmState2 <- get myFSM firstId
-    assert $ fsmState2 == Open
+    fsmState2 @?= Open
 
     msg2 <- mkMsgs [Close]
     _    <- patch myFSM firstId msg2
 
     takeMVar sync
     Just fsmState3 <- get myFSM firstId
-    assert $ fsmState3 == Closed
+    fsmState3 @?= Closed

@@ -159,3 +159,8 @@ Lastly, Mealstrom is not a good fit if:
 * You require every last bit of performance.
 * You do not care particularly whether updates are occasionally lost.
 * You require complex, cross-entity queries and/or already have a large amount of query language code, so that the drawbacks cited above do not seem too bad in comparison.
+
+
+## Tests
+
+To run the tests you need to `createdb fsmtest` first.

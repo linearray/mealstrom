@@ -7,7 +7,7 @@
 
 {-|
 Module      : Upgrade
-Description : Test that upgrades of the data model actually work
+Description : Test that upgrading the data model actually works
 Copyright   : (c) Max Amanshauser, 2016
 License     : MIT
 Maintainer  : max@lambdalifting.org
@@ -183,15 +183,15 @@ runTest c = do
     let myFSM2 = FSMHandle st st t2 90 3
 
     -- Conversion when accessing
-    res3      <- get myFSM2 firstId
-    assert $ res3 == Just NewState1
+    res3  <- get myFSM2 firstId
+    res3 @?= Just NewState1
 
     -- Conversion when saving
     mkMsgs [NewEvent1 15] >>= patch myFSM2 firstId
-    res4      <- get myFSM2 firstId
-    assert $ res4 == Just (NewState2 15)
+    res4  <- get myFSM2 firstId
+    res4 @?= Just (NewState2 15)
 
     -- Batch conversion. Also examines already converted instances, but writes them back untouched.
     PGJSON._batchConversion st "UpgradeTest" (Proxy :: Proxy SecondKey SecondState SecondEvent SecondAction)
-    res5 <- get myFSM2 sndId
-    assert $ res5 == Just NewState1
+    res5  <- get myFSM2 sndId
+    res5 @?= Just NewState1

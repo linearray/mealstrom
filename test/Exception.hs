@@ -68,14 +68,14 @@ runTest c = do
     res1 <- post myFSM firstId MyState1
     res2 <- post myFSM firstId MyState1
 
-    assert res1
-    assert $ not res2
+    assertBool "Insert Instance once"                 res1
+    assertBool "Insert Instance again and fail" $ not res2
 
     -- Technically the following assertions are not concerned with exceptions, but fine, whatever
     secondId <- nextRandom
 
     res3 <- get myFSM secondId
-    assert $ isNothing res3
+    assertBool "Get non-existing instance" $ isNothing res3
 
     res4 <- mkMsgs [MyEvent1] >>= patch myFSM secondId
-    assert $ not res4
+    assertBool "Patch non-existing instance" $ not res4

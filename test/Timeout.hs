@@ -79,4 +79,4 @@ runTest c = do
     -- action is run again
     takeMVar sync
 
-    assert True
+    assertBool "Recovery after timeout successful" True

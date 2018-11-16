@@ -83,4 +83,4 @@ runTest c = do
 
     -- If we reach this, then the recovery definitely ran, yet the entry in the DB
     -- might still be wrong. That's ok.
-    assert True
+    assertBool "Failed action recovers successfully" True

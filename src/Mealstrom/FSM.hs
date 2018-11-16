@@ -112,11 +112,6 @@ histAppend s ss = s:ss
 -- ##############
 -- # JSON Codecs
 -- ##############
-instance ToJSON UUID where
-    toJSON u = toJSON (UUID.toText u)
-
-instance FromJSON UUID where
-    parseJSON = withText "UUID" $ \x -> return . fromJust $ UUID.fromText x
 
 instance (ToJSON s, ToJSON e, ToJSON a) => ToJSON (Change s e a) where
     toJSON (Count i) = object [ "count" .= toJSON i]
