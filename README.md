@@ -1,4 +1,4 @@
-Mealstrom
+Mealstrom [![Hackage version](https://img.shields.io/hackage/v/mealstrom.svg?colorB=4FB900)](https://hackage.haskell.org/package/mealstrom)
 =========
 
 Mealstrom is a way of modeling, storing and running (business) processes using PostgreSQL. It is based on an idea that [Jakob Sievers](http://canned.primat.es/) had when we both worked at a payment service provider.
