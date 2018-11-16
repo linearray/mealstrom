@@ -3,7 +3,7 @@ Mealstrom [![Hackage version](https://img.shields.io/hackage/v/mealstrom.svg?col
 
 Mealstrom is a way of modeling, storing and running (business) processes using PostgreSQL. It is based on an idea that [Jakob Sievers](http://canned.primat.es/) had when we both worked at a payment service provider.
 
-It is a remedy for a number of drawbacks of using relational database systems directly for the same task, while still building on some of their strengths.
+It is a remedy for a number of drawbacks of using relational database systems for the same task directly, while still building on some of their strengths.
 
 You often want to store not just the current state of a process instantiation, but keep a log of all steps taken so far. Obviously you cannot simply update the previous state in a relational database.
 
@@ -15,7 +15,7 @@ You often want to store not just the current state of a process instantiation, b
 
 In short: If you are not very careful, modeling state transitions in your processes becomes a tangled mess of SQL queries and code, with duplicated functionality and the potential of race conditions and low assurances of correctness.
 
-##Enter Mealstrom
+## Enter Mealstrom
 
 With Mealstrom you model your process as a finite-state automaton, a Mealy machine to be precise. A Mealy machine, in contrast to a Moore machine, is an FSA that attaches effects to transitions instead of states.
 
@@ -145,7 +145,7 @@ You can run arbitrary effects, they will be retried until a retry limit you set 
 If, however, you choose to send a Msg to another _MealyInstance_ as an effect, i.e. call `patch` on it in the `effects` function, you can reuse the `msgId` from the first `Msg`. The receiving FSM instance can then even do the same thing, and so on. This way you can form a chain of idempotent updates that will, assuming failures are intermittent, eventually succeed.
 
 ### Log
-The `FSMAPI` attempt to provide an exception-safe way to work with FSM instances in production. If you want to examine an instances log or alter the past, you can use the functions from the respective stores directly, but have to take care of exceptions yourself.
+The `FSMAPI` attempts to provide an exception-safe way to work with FSM instances in production. If you want to examine an instance's log or alter the past, you can use the functions from the respective stores directly, but have to take care of exceptions yourself.
 
 ### "Schema" updates
 If at any time you decide to extend one of the types that constitute a `MealyMachine`, you must also update the JSON serialiser/deserialiser and make sure the deserialiser also works when the new fields are not present. Sometimes this is trivial, e.g. when adding another data constructor to a sum type. Sometimes the change is incompatible and you need to provide a default value or even a conversion (be careful not to shoot yourself in the foot by introducing ambiguity whether something is a "new" or an "old" instance).
@@ -163,4 +163,4 @@ Lastly, Mealstrom is not a good fit if:
 
 ## Tests
 
-To run the tests you need to `createdb fsmtest` first.
+To run the tests you need to run `createdb fsmtest` first.
