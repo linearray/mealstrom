@@ -11,6 +11,7 @@ import Database.PostgreSQL.Simple.Types
 
 import Data.ByteString.Char8             as DBSC8
 import Data.Maybe                           (fromMaybe)
+import Data.Semigroup ((<>))
 
 import System.Environment
 
