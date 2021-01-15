@@ -24,8 +24,8 @@ import           Control.Concurrent.STM
 import           Control.Exception
 import           Data.Text
 import           Data.Time
-import qualified ListT
-import           STMContainers.Map as Map
+import qualified DeferredFolds.UnfoldlM as UnfoldlM
+import           StmContainers.Map as Map
 
 import           Mealstrom.FSM
 import           Mealstrom.FSMStore
@@ -116,9 +116,9 @@ walScan MemoryStore{..} cutoff =
     getCurrentTime >>= \t -> atomically $
         let xx = addUTCTime (negate (fromInteger (toInteger cutoff) :: NominalDiffTime)) t in
 
-        ListT.fold (\acc (k,(t,w)) -> if t < xx
+        UnfoldlM.foldlM' (\acc (k,(t,w)) -> if t < xx
                                     then return (WALEntry k t w : acc)
-                                    else return acc) [] (stream memstoreWals)
+                                    else return acc) [] (Map.unfoldlM memstoreWals)
 
 
 printWal :: MemoryStore k s e a -> k -> IO ()
