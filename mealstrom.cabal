@@ -11,6 +11,9 @@ description:
     a kind of finite-state machine, in Haskell using PostgreSQL for
     persistence.
 
+extra-source-files:
+                     README.md
+                     CHANGELOG.md
 license:             MIT
 license-file:        LICENSE
 author:              Max Amanshauser
