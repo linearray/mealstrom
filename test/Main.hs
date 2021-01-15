@@ -10,21 +10,29 @@ import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Types
 
 import Data.ByteString.Char8             as DBSC8
+import Data.Maybe                           (fromMaybe)
+
+import System.Environment
 
 import Test.Tasty
 
 main :: IO ()
-main =
-    let c = "host='localhost' port=5432 dbname='fsmtest'" in do
-        conn <- connectPostgreSQL (DBSC8.pack c)
-        _    <- execute_ conn $ Query (DBSC8.pack "DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+main = do
+    h  <- fromMaybe "localhost" <$> lookupEnv "PGHOST"
+    p  <- fromMaybe "5432"      <$> lookupEnv "PGPORT"
+    u  <- fromMaybe "postgres"  <$> lookupEnv "PGUSER"
+    pw <- fromMaybe ""          <$> lookupEnv "PGPASSWORD"
 
-        defaultMain $ testGroup "All tests" [
-            runBasicTests c,
-            runFSM2FSMTests c,
-            runCounterTests c,
-            runRecoveryTests c,
-            runTimeoutTests c,
-            runExceptionTests c,
-            runUpgradeTests c
-            ]
+    let c = "host='" <> h <> "' port=" <> p <> " dbname='fsmtest' user='" <> u <> "' password='" <> pw <> "'"
+    conn <- connectPostgreSQL (DBSC8.pack c)
+    _    <- execute_ conn $ Query (DBSC8.pack "DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+
+    defaultMain $ testGroup "All tests" [
+        runBasicTests c,
+        runFSM2FSMTests c,
+        runCounterTests c,
+        runRecoveryTests c,
+        runTimeoutTests c,
+        runExceptionTests c,
+        runUpgradeTests c
+        ]
