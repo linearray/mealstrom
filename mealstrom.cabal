@@ -1,7 +1,7 @@
 cabal-version:       2.2
 
 name:                mealstrom
-version:             0.0.1.0
+version:             0.0.1.1
 synopsis:            Manipulate FSMs and store them in PostgreSQL.
 homepage:            https://github.com/linearray/mealstrom
 bug-reports:         https://github.com/linearray/mealstrom/issues
